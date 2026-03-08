@@ -1,0 +1,15 @@
+{
+  "network": "amoy",
+  "chainId": "80002",
+  "deployedAtIso": "2026-03-08T09:18:19.809Z",
+  "deployer": "0x71BB0f1EBa26c41Ef6703ec30A249Bb0F293d6c8",
+  "jpycToken": "0x807Cdfe8893E0bC125DBcA013147068C021ef759",
+  "machineRegistry": "0x224C501d39E70673eC438625bF2728e08e7711A8",
+  "usageRight": "0xdEafE1e975086a2cEd95299B832EaF86b5196cF9",
+  "settlement": "0x3ab2F7f7Ad6E3654C59175859c2D9e2B122F7dA9",
+  "marketplace": "0x4f8cf6f0FD4Bb27Ab02453012dF14Efd0E3340e6",
+  "computeRight": "0xb14c3d3A6Ca41Fa6f41ceD756213AA7135c7621d",
+  "revenueRight": "0xAa355b440C6850f2551F40e0064e2FB16362e11E",
+  "platformFeeRecipient": "0x71BB0f1EBa26c41Ef6703ec30A249Bb0F293d6c8",
+  "platformTreasury": "0x71BB0f1EBa26c41Ef6703ec30A249Bb0F293d6c8"
+}

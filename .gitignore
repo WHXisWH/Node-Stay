@@ -1,0 +1,23 @@
+# Dependencies / build artifacts
+node_modules/
+dist/
+.next/
+coverage/
+.turbo/
+.pnpm-store/
+
+# Local environment files (never commit secrets)
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+!.env.local.example
+!**/.env.local.example
+
+# OS artifacts
+.DS_Store
+
+# IDE artifacts
+.cursor/

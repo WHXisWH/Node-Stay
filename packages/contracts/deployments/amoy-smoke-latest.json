@@ -1,0 +1,91 @@
+{
+  "network": "amoy",
+  "chainId": "80002",
+  "ranAtIso": "2026-03-08T09:21:15.768Z",
+  "deployer": "0x71BB0f1EBa26c41Ef6703ec30A249Bb0F293d6c8",
+  "participants": {
+    "alice": "0x20f0e1C809F55F3E3b58183BBEAFc6bcd298Dee8",
+    "bob": "0x9264b128932D6f2004E821d65AB93a94d3D40ecf"
+  },
+  "entities": {
+    "usageRightId": "2",
+    "listingId": "1",
+    "computeTokenId": "1",
+    "revenueProgramId": "1",
+    "revenueAllocationId": "1"
+  },
+  "txs": [
+    {
+      "stage": "fund-alice-gas",
+      "hash": "0x8461ff15d395d3319309f20294f1025e4eaa939b4589908e60a7ffb1ec19eaa7"
+    },
+    {
+      "stage": "fund-bob-gas",
+      "hash": "0xcb3246e04fb9a0e027e9867b891a2ce35d774f28d56647cc46d3fa2b6a8ec86b"
+    },
+    {
+      "stage": "mint-jpyc-bob",
+      "hash": "0xe492ef7b13123c3bb4e0c9fc05459d66f1b65395bb91f098c02768d3f82b24d3"
+    },
+    {
+      "stage": "mint-jpyc-deployer",
+      "hash": "0xe65ac335a98fb1ffb855bbe29cb962aeacab32a65e4a1e7bb52a84ddf85a3f91"
+    },
+    {
+      "stage": "usage-mint",
+      "hash": "0x30200009da11cf3ec437f17e52b3ebc538a0378b8eb92b3b61147c1c2a792303"
+    },
+    {
+      "stage": "marketplace-approve",
+      "hash": "0x3664a48b25c50f8796e67371e7e9fb043d593b440bad5891d8a38dad8eabcac9"
+    },
+    {
+      "stage": "marketplace-list",
+      "hash": "0x5187a6d784a2f99fa733f63f69f7f34c5a98b7b3d97f247a334394606b68c300"
+    },
+    {
+      "stage": "marketplace-jpyc-approve",
+      "hash": "0x32128483ba31a35d3bfe9116439fdeb9e94d18e1da1177fa881500239a8e4471"
+    },
+    {
+      "stage": "marketplace-buy",
+      "hash": "0x4252dd6a54802a92a08bb01dce8fdfe2ac9dbca9384fef08e18e36f59819d0ff"
+    },
+    {
+      "stage": "compute-mint",
+      "hash": "0x4020810c33adb51e522b902c2345c7890420d0adbe11df093d6bf8eeb32bf324"
+    },
+    {
+      "stage": "compute-fund-contract",
+      "hash": "0x9f71c4754a7f6fdb739389f1a66858c2fcc85952bab7e7c4304778eaeee0c113"
+    },
+    {
+      "stage": "compute-start",
+      "hash": "0x302fbdb3da5cd68a55f286861d6f295abd5caa56aef8f437dd31ca850373e2e1"
+    },
+    {
+      "stage": "compute-complete",
+      "hash": "0x24701aa2e4fd6847a390d5938fcfab4b13e1409818601fcfd98b285e982e7d17"
+    },
+    {
+      "stage": "revenue-create-program",
+      "hash": "0x107ad53614801a62453a0a72348e74dcd07c75833a330ef86ca358c7d5e5a27f"
+    },
+    {
+      "stage": "revenue-jpyc-approve",
+      "hash": "0x74814f60e758c1bcc41f4502a60df552561b19aa09b0b4e795831d4696fc5999"
+    },
+    {
+      "stage": "revenue-record-allocation",
+      "hash": "0xc87d11783c868484436af37380d2d24685b9dcb851581160df5b63728df32478"
+    },
+    {
+      "stage": "revenue-claim-alice",
+      "hash": "0x22afe9e5b210997fa6cbee4211af68cc5e75e7163d1af6fb6ccf35f0a598e31f"
+    },
+    {
+      "stage": "revenue-claim-bob",
+      "hash": "0x9f8b80272c90d0db2134ea9b5d88a6370cb614b2810a057fae44a86129a08e83"
+    }
+  ]
+}

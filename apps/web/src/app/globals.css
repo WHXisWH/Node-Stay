@@ -1,0 +1,458 @@
+/* グローバルスタイル定義 */
+/* Tailwind CSS v4 ではCSSから直接インポートする */
+@import "tailwindcss";
+
+/* Google Fonts: Noto Sans JP（日本語フォント）の読み込み */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;800&display=swap');
+
+/* テーマカスタマイズ */
+@theme {
+  /* ブランドカラー（インディゴ系） */
+  --color-brand-50: #EEF2FF;
+  --color-brand-100: #E0E7FF;
+  --color-brand-200: #C7D2FE;
+  --color-brand-300: #A5B4FC;
+  --color-brand-400: #818CF8;
+  --color-brand-500: #6366F1;
+  --color-brand-600: #4F46E5;
+  --color-brand-700: #4338CA;
+  --color-brand-800: #3730A3;
+  --color-brand-900: #312E81;
+  --color-brand-950: #1E1B4B;
+
+  /* JPYCゴールドカラー */
+  --color-jpyc-50: #FFFBEB;
+  --color-jpyc-100: #FEF3C7;
+  --color-jpyc-200: #FDE68A;
+  --color-jpyc-300: #FCD34D;
+  --color-jpyc-400: #FBBF24;
+  --color-jpyc-500: #F59E0B;
+  --color-jpyc-600: #D97706;
+  --color-jpyc-700: #B45309;
+  --color-jpyc-800: #92400E;
+  --color-jpyc-900: #78350F;
+
+  /* ダークサーフェスカラー */
+  --color-surface-50: #F8FAFC;
+  --color-surface-100: #F1F5F9;
+  --color-surface-200: #E2E8F0;
+  --color-surface-300: #CBD5E1;
+  --color-surface-800: #1E293B;
+  --color-surface-900: #0F172A;
+  --color-surface-950: #020617;
+
+  /* フォント定義 */
+  --font-sans: "Noto Sans JP", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  /* アニメーション定義 */
+  --animate-fade-in: fadeIn 0.5s ease-in-out;
+  --animate-slide-up: slideUp 0.5s ease-out;
+
+  /* シャドウ */
+  --shadow-card: 0 1px 3px 0 rgba(0,0,0,0.06), 0 1px 2px -1px rgba(0,0,0,0.06);
+  --shadow-card-hover: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.05);
+  --shadow-glow: 0 0 20px rgba(99,102,241,0.3);
+}
+
+/* キーフレームアニメーション */
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes slideUp {
+  0% { transform: translateY(10px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+/* ===== ベーススタイル ===== */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--color-surface-50);
+  color: #0F172A;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.6;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 700;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+/* ===== カスタムスクロールバー ===== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* ===== 再利用コンポーネントクラス ===== */
+
+/* カード */
+.card {
+  background-color: white;
+  border-radius: 1rem;
+  border: 1px solid #F1F5F9;
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-card-hover);
+  border-color: #E2E8F0;
+}
+
+/* ボタン */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background-color: var(--color-brand-600);
+  color: white;
+  font-weight: 600;
+  border-radius: 0.75rem;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.15s, box-shadow 0.15s;
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-brand-700);
+}
+
+.btn-primary:active {
+  background-color: var(--color-brand-800);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background-color: white;
+  color: #334155;
+  font-weight: 600;
+  border-radius: 0.75rem;
+  border: 1px solid #E2E8F0;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+
+.btn-secondary:hover {
+  background-color: #F8FAFC;
+}
+
+.btn-jpyc {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  background-color: var(--color-jpyc-500);
+  color: white;
+  font-weight: 600;
+  border-radius: 0.75rem;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  text-decoration: none;
+  font-size: 0.875rem;
+}
+
+.btn-jpyc:hover {
+  background-color: var(--color-jpyc-600);
+}
+
+/* バッジ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.badge-green {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background-color: #DCFCE7;
+  color: #15803D;
+}
+
+.badge-yellow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background-color: #FEF3C7;
+  color: #B45309;
+}
+
+.badge-blue {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background-color: #DBEAFE;
+  color: #1D4ED8;
+}
+
+.badge-gray {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background-color: #F1F5F9;
+  color: #475569;
+}
+
+.badge-red {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background-color: #FEE2E2;
+  color: #DC2626;
+}
+
+/* セクションラベル */
+.section-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  background-color: #EEF2FF;
+  color: var(--color-brand-600);
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: 9999px;
+  margin-bottom: 1rem;
+}
+
+/* 入力フィールド */
+.input-field {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background-color: white;
+  border: 1px solid #E2E8F0;
+  border-radius: 0.75rem;
+  color: #0F172A;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.input-field::placeholder {
+  color: #94A3B8;
+}
+
+.input-field:focus {
+  border-color: var(--color-brand-500);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.select-field {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background-color: white;
+  border: 1px solid #E2E8F0;
+  border-radius: 0.75rem;
+  color: #0F172A;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s;
+  appearance: none;
+  cursor: pointer;
+}
+
+/* メインコンテナ */
+.container-main {
+  max-width: 72rem;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (min-width: 640px) {
+  .container-main {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container-main {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+
+/* スケルトンローディング */
+.skeleton {
+  background: linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 0.5rem;
+}
+
+/* テキストグラデーション */
+.text-gradient {
+  background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 50%, #EC4899 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* シャドウグロー */
+.shadow-glow {
+  box-shadow: var(--shadow-glow);
+}
+
+.shadow-card {
+  box-shadow: var(--shadow-card);
+}
+
+.shadow-card-hover {
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* アニメーション */
+.animate-fade-in {
+  animation: var(--animate-fade-in);
+}
+
+.animate-slide-up {
+  animation: var(--animate-slide-up);
+}
+
+.animate-pulse-slow {
+  animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* MapLibre GL Popup */
+.maplibregl-popup-content-wrapper {
+  background: #FFFFFF !important;
+  border-radius: 1rem !important;
+  box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3), 0 8px 10px -6px rgba(0,0,0,0.2) !important;
+  border: 1px solid #E2E8F0 !important;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.maplibregl-popup-content {
+  background: transparent !important;
+  margin: 12px 14px !important;
+  font-family: var(--font-sans) !important;
+}
+
+.maplibregl-popup-tip {
+  border-top-color: #FFFFFF !important;
+}
+
+.maplibregl-popup-close-button {
+  color: #94A3B8 !important;
+  font-size: 20px !important;
+  top: 8px !important;
+  right: 10px !important;
+  background: transparent !important;
+  border: none !important;
+  cursor: pointer !important;
+}
+
+.maplibregl-popup-close-button:hover {
+  color: #475569 !important;
+  background: transparent !important;
+}
+
+.maplibregl-ctrl-group {
+  background: #1E293B !important;
+  border-radius: 0.75rem !important;
+  overflow: hidden;
+  box-shadow: 0 1px 3px 0 rgba(0,0,0,0.2), 0 1px 2px -1px rgba(0,0,0,0.15) !important;
+  border: 1px solid #334155 !important;
+}
+
+.maplibregl-ctrl-group button {
+  background: #1E293B !important;
+  border: none !important;
+  color: #94A3B8 !important;
+  width: 32px !important;
+  height: 32px !important;
+}
+
+.maplibregl-ctrl-group button:hover {
+  background: #334155 !important;
+  color: #E2E8F0 !important;
+}
+
+.maplibregl-ctrl-group button+button {
+  border-top: 1px solid #334155 !important;
+}
+
+/* Custom venue popup class */
+.venue-popup .maplibregl-popup-content-wrapper {
+  min-width: 240px;
+}

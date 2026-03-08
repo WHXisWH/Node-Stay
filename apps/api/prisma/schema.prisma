@@ -1,0 +1,523 @@
+// NodeStay MachineFi - Prisma スキーマ
+// PRD v2 Database Schema に準拠
+// 対応DB: PostgreSQL 16
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// 基礎テーブル
+// ============================================================
+
+model User {
+  id              String    @id @default(uuid())
+  walletAddress   String?   @unique @map("wallet_address")
+  email           String?   @unique
+  phone           String?   @unique
+  displayName     String?   @map("display_name")
+  kycLevel        Int       @default(0) @map("kyc_level")
+  kycProofHash    String?   @map("kyc_proof_hash")
+  status          String    @default("ACTIVE")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  sessions        Session[]
+  usageRights     UsageRight[]
+  usageListings   UsageListing[]
+  computeRights   ComputeRight[]
+  revenueRights   RevenueRight[]
+  disputes        Dispute[]
+  auditLogs       AuditLog[]
+  wallets         Wallet[]
+
+  @@map("users")
+}
+
+model Merchant {
+  id              String    @id @default(uuid())
+  name            String    @default("")
+  businessName    String?   @map("business_name")
+  ownerUserId     String?   @map("owner_user_id")
+  treasuryWallet  String?   @map("treasury_wallet")
+  kycStatus       String    @default("PENDING") @map("kyc_status")
+  status          String    @default("PENDING")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  venues          Venue[]
+  wallets         Wallet[]
+
+  @@map("merchants")
+}
+
+model Venue {
+  id              String    @id @default(uuid())
+  merchantId      String    @map("merchant_id")
+  name            String
+  country         String    @default("JP")
+  prefecture      String?
+  city            String?
+  address         String?
+  timezone        String    @default("Asia/Tokyo")
+  latitude        Float?
+  longitude       Float?
+  amenities       String[]  // Wi-Fi / GPU / 個室 / ドリンクバー / ...
+  openHours       String?   @map("open_hours")
+  totalSeats      Int       @default(0) @map("total_seats")
+  venueIdHash     String?   @map("venue_id_hash")
+  requiresKyc     Boolean   @default(false) @map("requires_kyc")
+  status          String    @default("ACTIVE")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  merchant        Merchant  @relation(fields: [merchantId], references: [id])
+  machines        Machine[]
+  sessions        Session[]
+  settlements     Settlement[]
+
+  @@map("venues")
+}
+
+// ============================================================
+// Machine Asset 関連
+// ============================================================
+
+model Machine {
+  id                      String    @id @default(uuid())
+  venueId                 String    @map("venue_id")
+  machineId               String    @unique @map("machine_id") // bytes32 hex
+  localSerial             String?   @map("local_serial")
+  hardwareFingerprintHash String?   @map("hardware_fingerprint_hash")
+  ownerWallet             String?   @map("owner_wallet")
+  machineClass            String    @map("machine_class") // GPU / CPU / STANDARD / PREMIUM
+  cpu                     String?
+  gpu                     String?
+  ramGb                   Int?      @map("ram_gb")
+  storageGb               Int?      @map("storage_gb")
+  specHash                String?   @map("spec_hash")
+  metadataUri             String?   @map("metadata_uri")
+  onchainTokenId          String?   @map("onchain_token_id")
+  onchainTxHash           String?   @map("onchain_tx_hash")
+  status                  String    @default("REGISTERED")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  venue                   Venue         @relation(fields: [venueId], references: [id])
+  slots                   MachineSlot[]
+  usageProducts           UsageProduct[]
+  usageRights             UsageRight[]
+  sessions                Session[]
+  computeProducts         ComputeProduct[]
+  computeRights           ComputeRight[]
+  revenuePrograms         RevenueProgram[]
+
+  @@index([venueId], name: "idx_machines_venue_id")
+  @@index([status], name: "idx_machines_status")
+  @@map("machines")
+}
+
+// 時間スロット占有（二重売り防止）
+model MachineSlot {
+  id              String    @id @default(uuid())
+  machineId       String    @map("machine_id")
+  slotStart       DateTime  @map("slot_start")
+  slotEnd         DateTime  @map("slot_end")
+  slotType        String    @map("slot_type") // USAGE / COMPUTE / BLOCKED
+  occupancyStatus String    @default("FREE") @map("occupancy_status") // FREE / RESERVED / CONSUMED / BLOCKED
+  referenceType   String?   @map("reference_type") // USAGE_RIGHT / COMPUTE_RIGHT / SESSION
+  referenceId     String?   @map("reference_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  machine         Machine   @relation(fields: [machineId], references: [id])
+
+  @@index([machineId, slotStart, slotEnd], name: "idx_machine_slots_machine_time")
+  @@map("machine_slots")
+}
+
+// ============================================================
+// Usage Right 関連
+// ============================================================
+
+model UsageProduct {
+  id                    String    @id @default(uuid())
+  venueId               String    @map("venue_id")
+  machineId             String?   @map("machine_id")
+  productName           String    @map("product_name")
+  usageType             String    @map("usage_type") // HOURLY / PACK / NIGHT / FLEX
+  startAt               DateTime? @map("start_at")
+  endAt                 DateTime? @map("end_at")
+  durationMinutes       Int?      @map("duration_minutes")
+  transferable          Boolean   @default(true)
+  transferCutoffMinutes Int       @default(60) @map("transfer_cutoff_minutes")
+  maxTransferCount      Int       @default(1) @map("max_transfer_count")
+  kycLevelRequired      Int       @default(0) @map("kyc_level_required")
+  priceJpyc             String    @map("price_jpyc") // JPYC 最小単位（wei 相当）
+  metadataUri           String?   @map("metadata_uri")
+  status                String    @default("ACTIVE")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  machine               Machine?  @relation(fields: [machineId], references: [id])
+  usageRights           UsageRight[]
+
+  @@map("usage_products")
+}
+
+model UsageRight {
+  id                  String    @id @default(uuid())
+  usageProductId      String    @map("usage_product_id")
+  machineId           String?   @map("machine_id")
+  ownerUserId         String?   @map("owner_user_id")
+  onchainTokenId      String?   @unique @map("onchain_token_id")
+  onchainTxHash       String?   @map("onchain_tx_hash")
+  startAt             DateTime? @map("start_at")
+  endAt               DateTime? @map("end_at")
+  transferable        Boolean   @default(true)
+  transferCutoffAt    DateTime? @map("transfer_cutoff_at")
+  transferCount       Int       @default(0) @map("transfer_count")
+  maxTransferCount    Int       @default(1) @map("max_transfer_count")
+  kycLevelRequired    Int       @default(0) @map("kyc_level_required")
+  status              String    // MINTED / LISTED / LOCKED / CHECKED_IN / CONSUMED / EXPIRED / CANCELLED
+  metadataUri         String?   @map("metadata_uri")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  usageProduct        UsageProduct  @relation(fields: [usageProductId], references: [id])
+  machine             Machine?      @relation(fields: [machineId], references: [id])
+  owner               User?         @relation(fields: [ownerUserId], references: [id])
+  sessions            Session[]
+  listings            UsageListing[]
+
+  @@index([ownerUserId], name: "idx_usage_rights_owner")
+  @@index([status], name: "idx_usage_rights_status")
+  @@index([startAt, endAt], name: "idx_usage_rights_time")
+  @@map("usage_rights")
+}
+
+model UsageListing {
+  id                String    @id @default(uuid())
+  usageRightId      String    @map("usage_right_id")
+  sellerUserId      String    @map("seller_user_id")
+  priceJpyc         String    @map("price_jpyc")
+  expiryAt          DateTime? @map("expiry_at")
+  status            String    @default("ACTIVE") // ACTIVE / CANCELLED / SOLD / EXPIRED
+  buyerUserId       String?   @map("buyer_user_id")
+  soldAt            DateTime? @map("sold_at")
+  onchainListingId  String?   @map("onchain_listing_id")  // チェーン上のリスティング ID
+  onchainTxHash     String?   @map("onchain_tx_hash")      // Listed / Sale イベントの txHash
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  usageRight    UsageRight @relation(fields: [usageRightId], references: [id])
+  seller        User       @relation(fields: [sellerUserId], references: [id])
+
+  @@map("usage_listings")
+}
+
+// ============================================================
+// Session 関連
+// ============================================================
+
+model Session {
+  id              String    @id @default(uuid())
+  usageRightId    String    @map("usage_right_id")
+  userId          String    @map("user_id")
+  venueId         String    @map("venue_id")
+  machineId       String?   @map("machine_id")
+  checkedInAt     DateTime? @map("checked_in_at")
+  checkedOutAt    DateTime? @map("checked_out_at")
+  status          String    @default("PENDING") // PENDING / IN_USE / COMPLETED / DISPUTED / CANCELLED
+  checkinMethod     String?   @map("checkin_method") // QR / KIOSK / STAFF / NFC
+  evidenceHash      String?   @map("evidence_hash")
+  notes             String?
+  settlementTxHash  String?   @map("settlement_tx_hash")  // settleUsage の txHash
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  usageRight      UsageRight @relation(fields: [usageRightId], references: [id])
+  user            User       @relation(fields: [userId], references: [id])
+  venue           Venue      @relation(fields: [venueId], references: [id])
+  machine         Machine?   @relation(fields: [machineId], references: [id])
+
+  @@index([userId], name: "idx_sessions_user")
+  @@index([machineId], name: "idx_sessions_machine")
+  @@map("sessions")
+}
+
+// ============================================================
+// Compute 予留テーブル（Phase 2）
+// ============================================================
+
+model ComputeProduct {
+  id                  String    @id @default(uuid())
+  machineId           String    @map("machine_id")
+  computeTier         String    @map("compute_tier")
+  startWindow         DateTime  @map("start_window")
+  endWindow           DateTime  @map("end_window")
+  maxDurationMinutes  Int       @map("max_duration_minutes")
+  preemptible         Boolean   @default(true)
+  settlementPolicy    String    @map("settlement_policy") // FIXED / PRO_RATA
+  priceJpyc           String    @map("price_jpyc")
+  metadataUri         String?   @map("metadata_uri")
+  status              String    @default("ACTIVE")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  machine             Machine   @relation(fields: [machineId], references: [id])
+  computeRights       ComputeRight[]
+
+  @@map("compute_products")
+}
+
+model ComputeRight {
+  id                String    @id @default(uuid())
+  computeProductId  String    @map("compute_product_id")
+  machineId         String    @map("machine_id")
+  ownerUserId       String?   @map("owner_user_id")
+  onchainTokenId    String?   @unique @map("onchain_token_id")
+  onchainTxHash     String?   @map("onchain_tx_hash")
+  status            String    // ISSUED / LISTED / RESERVED / RUNNING / COMPLETED / INTERRUPTED / FAILED / EXPIRED
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  computeProduct    ComputeProduct @relation(fields: [computeProductId], references: [id])
+  machine           Machine        @relation(fields: [machineId], references: [id])
+  owner             User?          @relation(fields: [ownerUserId], references: [id])
+  computeJobs       ComputeJob[]
+
+  @@map("compute_rights")
+}
+
+model ComputeJob {
+  id                  String    @id @default(uuid())
+  computeRightId      String?   @map("compute_right_id")
+  buyerUserId         String?   @map("buyer_user_id")
+  jobIdHash           String?   @unique @map("job_id_hash")
+  jobType             String?   @map("job_type")
+  schedulerRef        String?   @map("scheduler_ref")
+  status              String    @default("PENDING")
+  startedAt           DateTime? @map("started_at")
+  endedAt             DateTime? @map("ended_at")
+  resultHash          String?   @map("result_hash")
+  interruptionReason  String?   @map("interruption_reason")
+  onchainTxHash       String?   @map("onchain_tx_hash")  // startJob / completeJob / interrupt の txHash
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  computeRight        ComputeRight? @relation(fields: [computeRightId], references: [id])
+
+  @@map("compute_jobs")
+}
+
+// ============================================================
+// Revenue 予留テーブル（Phase 3）
+// ============================================================
+
+model RevenueProgram {
+  id                String    @id @default(uuid())
+  machineId         String    @map("machine_id")
+  shareBps          Int       @map("share_bps") // 最大 4000 (40%)
+  revenueScope      String    @map("revenue_scope") // USAGE_ONLY / COMPUTE_ONLY / ALL
+  startAt           DateTime  @map("start_at")
+  endAt             DateTime  @map("end_at")
+  settlementCycle   String    @map("settlement_cycle") // DAILY / WEEKLY / MONTHLY
+  payoutToken       String    @default("JPYC") @map("payout_token")
+  metadataUri       String?   @map("metadata_uri")
+  status            String    @default("ISSUED")
+  createdAt         DateTime  @default(now()) @map("created_at")
+
+  machine           Machine         @relation(fields: [machineId], references: [id])
+  revenueRights     RevenueRight[]
+  allocations       RevenueAllocation[]
+
+  @@map("revenue_programs")
+}
+
+model RevenueRight {
+  id                String    @id @default(uuid())
+  revenueProgramId  String    @map("revenue_program_id")
+  holderUserId      String?   @map("holder_user_id")
+  onchainTokenId    String?   @map("onchain_token_id")
+  amount1155        String?   @map("amount_1155")
+  status            String    @default("ACTIVE")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  revenueProgram    RevenueProgram @relation(fields: [revenueProgramId], references: [id])
+  holder            User?          @relation(fields: [holderUserId], references: [id])
+  claims            RevenueClaim[]
+
+  @@map("revenue_rights")
+}
+
+model RevenueAllocation {
+  id                    String    @id @default(uuid())
+  revenueProgramId      String    @map("revenue_program_id")
+  allocationPeriodStart DateTime  @map("allocation_period_start")
+  allocationPeriodEnd   DateTime  @map("allocation_period_end")
+  totalAmountJpyc       String    @map("total_amount_jpyc")
+  allocationTxHash      String?   @map("allocation_tx_hash")
+  createdAt             DateTime  @default(now()) @map("created_at")
+
+  revenueProgram        RevenueProgram @relation(fields: [revenueProgramId], references: [id])
+  claims                RevenueClaim[]
+
+  @@map("revenue_allocations")
+}
+
+model RevenueClaim {
+  id                  String    @id @default(uuid())
+  revenueRightId      String    @map("revenue_right_id")
+  allocationId        String    @map("allocation_id")
+  claimedAmountJpyc   String    @map("claimed_amount_jpyc")
+  claimTxHash         String?   @map("claim_tx_hash")
+  claimedAt           DateTime  @default(now()) @map("claimed_at")
+
+  revenueRight        RevenueRight      @relation(fields: [revenueRightId], references: [id])
+  allocation          RevenueAllocation @relation(fields: [allocationId], references: [id])
+
+  @@map("revenue_claims")
+}
+
+// ============================================================
+// 決済・台帳
+// ============================================================
+
+model Wallet {
+  id            String    @id @default(uuid())
+  userId        String?   @map("user_id")
+  merchantId    String?   @map("merchant_id")
+  walletAddress String    @unique @map("wallet_address")
+  walletType    String    @map("wallet_type") // USER / MERCHANT / TREASURY / PLATFORM
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  user          User?     @relation(fields: [userId], references: [id])
+  merchant      Merchant? @relation(fields: [merchantId], references: [id])
+
+  @@map("wallets")
+}
+
+model LedgerEntry {
+  id              String    @id @default(uuid())
+  entryType       String    @map("entry_type") // PAYMENT / REFUND / DEPOSIT_HOLD / DEPOSIT_RELEASE / REVENUE_DISTRIBUTION / CLAIM
+  referenceType   String    @map("reference_type") // USAGE / SESSION / COMPUTE / REVENUE
+  referenceId     String?   @map("reference_id")
+  fromWallet      String?   @map("from_wallet")
+  toWallet        String?   @map("to_wallet")
+  amountJpyc      String    @map("amount_jpyc")
+  txHash          String?   @map("tx_hash")
+  status          String    @default("PENDING")
+  idempotencyKey  String?   @map("idempotency_key")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  confirmedAt     DateTime? @map("confirmed_at")
+
+  @@index([referenceType, referenceId], name: "idx_ledger_reference")
+  @@index([txHash], name: "idx_ledger_tx_hash")
+  @@map("ledger_entries")
+}
+
+model Settlement {
+  id                  String    @id @default(uuid())
+  venueId             String?   @map("venue_id")
+  settlementType      String    @map("settlement_type") // USAGE / COMPUTE / REVENUE / MIXED
+  periodStart         DateTime? @map("period_start")
+  periodEnd           DateTime? @map("period_end")
+  grossAmountJpyc     String    @map("gross_amount_jpyc")
+  venueShareJpyc      String    @map("venue_share_jpyc")
+  platformShareJpyc   String    @map("platform_share_jpyc")
+  revenueShareJpyc    String    @map("revenue_share_jpyc")
+  txHash              String?   @map("tx_hash")
+  status              String    @default("PENDING")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  venue               Venue?    @relation(fields: [venueId], references: [id])
+
+  @@map("settlements")
+}
+
+// ============================================================
+// Marketplace
+// ============================================================
+
+model MarketplaceListing {
+  id            String    @id @default(uuid())
+  listingType   String    @map("listing_type") // USAGE / COMPUTE / REVENUE
+  assetId       String    @map("asset_id")
+  sellerUserId  String?   @map("seller_user_id")
+  priceJpyc     String    @map("price_jpyc")
+  expiryAt      DateTime? @map("expiry_at")
+  active        Boolean   @default(true)
+  buyerUserId   String?   @map("buyer_user_id")
+  soldAt        DateTime? @map("sold_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@map("marketplace_listings")
+}
+
+// ============================================================
+// リスク・コンプライアンス
+// ============================================================
+
+model RiskFlag {
+  id          String    @id @default(uuid())
+  targetType  String    @map("target_type") // USER / MACHINE / USAGE_RIGHT / SESSION / ...
+  targetId    String    @map("target_id")
+  riskCode    String    @map("risk_code")
+  severity    String    // LOW / MEDIUM / HIGH / CRITICAL
+  status      String    @default("OPEN")
+  notes       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+  resolvedAt  DateTime? @map("resolved_at")
+
+  @@map("risk_flags")
+}
+
+model Dispute {
+  id              String    @id @default(uuid())
+  referenceType   String    @map("reference_type") // USAGE_RIGHT / COMPUTE_RIGHT / SESSION / ...
+  referenceId     String    @map("reference_id")
+  openerUserId    String?   @map("opener_user_id")
+  evidenceHash    String?   @map("evidence_hash")
+  status          String    @default("OPEN") // OPEN / UNDER_REVIEW / RESOLVED / REJECTED
+  resolutionNote  String?   @map("resolution_note")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  resolvedAt      DateTime? @map("resolved_at")
+
+  opener          User?     @relation(fields: [openerUserId], references: [id])
+
+  @@map("disputes")
+}
+
+model AuditLog {
+  id          String    @id @default(uuid())
+  actorType   String    @map("actor_type") // USER / MERCHANT / ADMIN / SYSTEM
+  actorId     String?   @map("actor_id")
+  action      String
+  targetType  String?   @map("target_type")
+  targetId    String?   @map("target_id")
+  payload     Json?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  actor       User?     @relation(fields: [actorId], references: [id])
+
+  @@index([targetType, targetId], name: "idx_audit_logs_target")
+  @@map("audit_logs")
+}
+
+// ============================================================
+// システム（冪等性キャッシュ）
+// ============================================================
+
+model IdempotencyKey {
+  key         String    @id
+  requestHash String    @map("request_hash")
+  response    Json
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@map("idempotency_keys")
+}

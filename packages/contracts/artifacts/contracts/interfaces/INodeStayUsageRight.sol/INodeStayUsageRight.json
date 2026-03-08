@@ -1,0 +1,333 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "INodeStayUsageRight",
+  "sourceName": "contracts/interfaces/INodeStayUsageRight.sol",
+  "abi": [
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "usageRightId",
+          "type": "uint256"
+        }
+      ],
+      "name": "UsageRightCancelled",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "usageRightId",
+          "type": "uint256"
+        }
+      ],
+      "name": "UsageRightConsumed",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "usageRightId",
+          "type": "uint256"
+        }
+      ],
+      "name": "UsageRightLocked",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "usageRightId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "machineId",
+          "type": "bytes32"
+        },
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "to",
+          "type": "address"
+        }
+      ],
+      "name": "UsageRightMinted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "usageRightId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "enum UsageStatus",
+          "name": "status",
+          "type": "uint8"
+        }
+      ],
+      "name": "UsageRightStatusUpdated",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "usageRightId",
+          "type": "uint256"
+        }
+      ],
+      "name": "UsageRightUnlocked",
+      "type": "event"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "usageRightId",
+          "type": "uint256"
+        }
+      ],
+      "name": "cancelUsageRight",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "usageRightId",
+          "type": "uint256"
+        }
+      ],
+      "name": "consumeUsageRight",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "usageRightId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getUsageData",
+      "outputs": [
+        {
+          "components": [
+            {
+              "internalType": "uint256",
+              "name": "usageRightId",
+              "type": "uint256"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "machineId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "bytes32",
+              "name": "machinePoolId",
+              "type": "bytes32"
+            },
+            {
+              "internalType": "uint64",
+              "name": "startAt",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint64",
+              "name": "endAt",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint8",
+              "name": "usageType",
+              "type": "uint8"
+            },
+            {
+              "internalType": "bool",
+              "name": "transferable",
+              "type": "bool"
+            },
+            {
+              "internalType": "uint64",
+              "name": "transferCutoff",
+              "type": "uint64"
+            },
+            {
+              "internalType": "uint8",
+              "name": "maxTransferCount",
+              "type": "uint8"
+            },
+            {
+              "internalType": "uint8",
+              "name": "transferCount",
+              "type": "uint8"
+            },
+            {
+              "internalType": "uint8",
+              "name": "kycLevelRequired",
+              "type": "uint8"
+            },
+            {
+              "internalType": "enum UsageStatus",
+              "name": "status",
+              "type": "uint8"
+            },
+            {
+              "internalType": "string",
+              "name": "metadataURI",
+              "type": "string"
+            }
+          ],
+          "internalType": "struct INodeStayUsageRight.UsageData",
+          "name": "",
+          "type": "tuple"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "usageRightId",
+          "type": "uint256"
+        }
+      ],
+      "name": "isTransferAllowed",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "usageRightId",
+          "type": "uint256"
+        }
+      ],
+      "name": "lockUsageRight",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "to",
+          "type": "address"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "machineId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "machinePoolId",
+          "type": "bytes32"
+        },
+        {
+          "internalType": "uint64",
+          "name": "startAt",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint64",
+          "name": "endAt",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint8",
+          "name": "usageType",
+          "type": "uint8"
+        },
+        {
+          "internalType": "bool",
+          "name": "transferable",
+          "type": "bool"
+        },
+        {
+          "internalType": "uint64",
+          "name": "transferCutoff",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint8",
+          "name": "maxTransferCount",
+          "type": "uint8"
+        },
+        {
+          "internalType": "uint8",
+          "name": "kycLevelRequired",
+          "type": "uint8"
+        },
+        {
+          "internalType": "string",
+          "name": "metadataURI",
+          "type": "string"
+        }
+      ],
+      "name": "mintUsageRight",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "usageRightId",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "usageRightId",
+          "type": "uint256"
+        }
+      ],
+      "name": "unlockUsageRight",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    }
+  ],
+  "bytecode": "0x",
+  "deployedBytecode": "0x",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

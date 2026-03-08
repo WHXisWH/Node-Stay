@@ -1,0 +1,22 @@
+{
+  "name": "nodestay",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "sh -c 'npm run dev -w @nodestay/api & API_PID=$!; npm run dev -w @nodestay/web; kill $API_PID'",
+    "build": "npm run build -ws",
+    "test": "npm run test -ws",
+    "test:coverage": "npm run test:coverage -ws",
+    "lint": "npm run lint -ws",
+    "typecheck": "npm run typecheck -ws"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.4"
+  }
+}
