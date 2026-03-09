@@ -30,9 +30,11 @@ function buildSiweMessage(params: {
   const { address, nonce, chainId, domain, uri } = params;
   const issuedAt = new Date().toISOString();
   return [
-    `${domain} はあなたの Ethereum アカウントによるサインインを要求しています。`,
+    // EIP-4361 の定型文でないとバックエンド（siwe パーサ）が弾く
+    `${domain} wants you to sign in with your Ethereum account:`,
+    address,
     '',
-    `${domain} にサインインします。`,
+    'NodeStay にサインインします。',
     '',
     `URI: ${uri}`,
     `Version: 1`,
