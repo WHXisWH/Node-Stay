@@ -98,7 +98,11 @@ export function Header() {
       return;
     }
 
-    const connector = connectors.find((c) => c.id === 'injected') ?? connectors[0];
+    const connector =
+      connectors.find((c) => c.id === 'metaMask')
+      ?? connectors.find((c) => c.id === 'coinbaseWallet')
+      ?? connectors.find((c) => c.id === 'injected')
+      ?? connectors[0];
     if (!connector) return;
 
     setPendingWalletSignIn(true);

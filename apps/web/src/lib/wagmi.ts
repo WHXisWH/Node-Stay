@@ -12,7 +12,15 @@ export const wagmiConfig = createConfig({
   chains: [polygon, polygonAmoy],
   connectors: [
     injected({
-      shimDisconnect: true,
+      target: 'metaMask',
+      shimDisconnect: false,
+    }),
+    injected({
+      target: 'coinbaseWallet',
+      shimDisconnect: false,
+    }),
+    injected({
+      shimDisconnect: false,
     }),
   ],
   transports: {
