@@ -1,0 +1,117 @@
+databases:
+  - name: nodestay-postgres
+    databaseName: nodestay
+    user: nodestay
+
+services:
+  - type: web
+    name: nodestay-api
+    runtime: node
+    rootDir: .
+    buildCommand: npm ci && cd apps/api && npx prisma generate
+    preDeployCommand: cd apps/api && npx prisma migrate deploy
+    startCommand: npm run start:render -w @nodestay/api
+    healthCheckPath: /v1/health
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nodestay-postgres
+          property: connectionString
+      - key: CORS_ORIGINS
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ENABLE_COMPUTE_MARKET
+        value: "true"
+      - key: ENABLE_TRANSFER_MARKET
+        value: "false"
+      - key: AMOY_RPC_URL
+        value: https://rpc-amoy.polygon.technology
+      - key: OPERATOR_PRIVATE_KEY
+        sync: false
+      - key: MACHINE_REGISTRY_ADDRESS
+        sync: false
+      - key: USAGE_RIGHT_ADDRESS
+        sync: false
+      - key: SETTLEMENT_ADDRESS
+        sync: false
+      - key: MARKETPLACE_ADDRESS
+        sync: false
+      - key: COMPUTE_RIGHT_ADDRESS
+        sync: false
+      - key: REVENUE_RIGHT_ADDRESS
+        sync: false
+
+  - type: worker
+    name: nodestay-compute-scheduler
+    runtime: node
+    rootDir: .
+    buildCommand: npm ci && cd apps/api && npx prisma generate
+    startCommand: npm run worker:compute-scheduler -w @nodestay/api
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nodestay-postgres
+          property: connectionString
+      - key: JWT_SECRET
+        sync: false
+      - key: ENABLE_COMPUTE_MARKET
+        value: "true"
+      - key: ENABLE_TRANSFER_MARKET
+        value: "false"
+      - key: AMOY_RPC_URL
+        value: https://rpc-amoy.polygon.technology
+      - key: OPERATOR_PRIVATE_KEY
+        sync: false
+      - key: MACHINE_REGISTRY_ADDRESS
+        sync: false
+      - key: USAGE_RIGHT_ADDRESS
+        sync: false
+      - key: SETTLEMENT_ADDRESS
+        sync: false
+      - key: MARKETPLACE_ADDRESS
+        sync: false
+      - key: COMPUTE_RIGHT_ADDRESS
+        sync: false
+      - key: REVENUE_RIGHT_ADDRESS
+        sync: false
+
+  - type: worker
+    name: nodestay-revenue-allocation
+    runtime: node
+    rootDir: .
+    buildCommand: npm ci && cd apps/api && npx prisma generate
+    startCommand: npm run worker:revenue-allocation -w @nodestay/api
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nodestay-postgres
+          property: connectionString
+      - key: JWT_SECRET
+        sync: false
+      - key: ENABLE_COMPUTE_MARKET
+        value: "true"
+      - key: ENABLE_TRANSFER_MARKET
+        value: "false"
+      - key: AMOY_RPC_URL
+        value: https://rpc-amoy.polygon.technology
+      - key: OPERATOR_PRIVATE_KEY
+        sync: false
+      - key: MACHINE_REGISTRY_ADDRESS
+        sync: false
+      - key: USAGE_RIGHT_ADDRESS
+        sync: false
+      - key: SETTLEMENT_ADDRESS
+        sync: false
+      - key: MARKETPLACE_ADDRESS
+        sync: false
+      - key: COMPUTE_RIGHT_ADDRESS
+        sync: false
+      - key: REVENUE_RIGHT_ADDRESS
+        sync: false
