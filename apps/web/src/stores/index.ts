@@ -9,3 +9,6 @@ export * from './session.store';
 export * from './pass.store';
 export * from './chainSync.store';
 export * from './user.store';
+export * from './revenue.store';
+export * from './merchant.store';
+export * from './marketplace.store';

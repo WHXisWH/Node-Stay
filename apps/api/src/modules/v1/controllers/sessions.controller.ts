@@ -3,6 +3,8 @@ import { normalizeIdempotencyKey } from '@nodestay/domain';
 import { z } from 'zod';
 import { IdempotencyService } from '../services/idempotency.service';
 import { SessionService } from '../services/session.service';
+import { CurrentUser, AuthenticatedUser } from '../decorators/current-user.decorator';
+import { UserService } from '../services/user.service';
 
 const CheckInBody = z.object({
   usageRightId: z.string().min(1),
@@ -20,6 +22,7 @@ export class SessionsController {
   constructor(
     private readonly sessions: SessionService,
     private readonly idempotency: IdempotencyService,
+    private readonly userService: UserService,
   ) {}
 
   @Get('/:sessionId')
@@ -42,12 +45,15 @@ export class SessionsController {
 
   @Get()
   async listSessions(
+    @CurrentUser() user: AuthenticatedUser,
     @Query('userId') userId?: string,
     @Query('status') status?: string,
     @Query('limit') limit?: string,
   ) {
+    // JWT からユーザーを解決（クエリパラメータより優先）
+    const resolvedUserId = userId || await this.userService.resolveUserId({ walletAddress: user.address });
     const sessions = await this.sessions.listSessions({
-      userId,
+      userId: resolvedUserId ?? undefined,
       status,
       limit: limit ? parseInt(limit, 10) : undefined,
     });
@@ -66,15 +72,19 @@ export class SessionsController {
   }
 
   @Post('/checkin')
-  async checkin(@Body() body: unknown) {
+  async checkin(@Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
     const parsed = CheckInBody.safeParse(body);
     if (!parsed.success) throw new HttpException({ message: '入力が不正です' }, HttpStatus.BAD_REQUEST);
+
+    // JWT からユーザーを解決
+    const userId = await this.userService.findOrCreateByWallet(user.address);
 
     const session = await this.sessions.startSession({
       usageRightId: parsed.data.usageRightId,
       venueId: parsed.data.venueId,
       machineId: parsed.data.machineId,
       checkinMethod: parsed.data.checkinMethod,
+      userId,
     });
 
     return { sessionId: session.id };

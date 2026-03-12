@@ -1,7 +1,8 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ethers } from 'ethers';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { UsageRightContractService } from '../../../blockchain/usage-right.contract.service';
+import { UserService } from './user.service';
 
 @Injectable()
 export class UsageRightService {
@@ -10,6 +11,7 @@ export class UsageRightService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly usageRightContract: UsageRightContractService,
+    private readonly userService: UserService,
   ) {}
 
   async purchase(input: {
@@ -24,6 +26,31 @@ export class UsageRightService {
     });
     if (!product) return null;
 
+    // owner_user_id は users.id への FK のため、フロントから渡る walletAddress を userId に解決する
+    // あわせて mint 先ウォレット（buyerWallet）も決定する。
+    let ownerUserId: string | null = null;
+    let resolvedBuyerWallet: string | null = null;
+    if (input.ownerUserId) {
+      const rawOwner = input.ownerUserId.trim();
+      const isWallet = /^0x[0-9a-fA-F]{40}$/.test(rawOwner);
+      if (isWallet) {
+        ownerUserId = await this.userService.findOrCreateByWallet(rawOwner);
+        resolvedBuyerWallet = rawOwner;
+      } else {
+        ownerUserId = await this.userService.resolveUserId({ userId: input.ownerUserId });
+        if (!ownerUserId) ownerUserId = null;
+        if (ownerUserId) {
+          const owner = await this.prisma.user.findUnique({
+            where: { id: ownerUserId },
+            select: { walletAddress: true },
+          });
+          if (owner?.walletAddress && /^0x[0-9a-fA-F]{40}$/.test(owner.walletAddress)) {
+            resolvedBuyerWallet = owner.walletAddress;
+          }
+        }
+      }
+    }
+
     const now = new Date();
     const durationMs = (product.durationMinutes ?? 60) * 60 * 1000;
     const startAt = now;
@@ -35,7 +62,7 @@ export class UsageRightService {
     const right = await this.prisma.usageRight.create({
       data: {
         usageProductId: input.productId,
-        ownerUserId: input.ownerUserId,
+        ownerUserId,
         startAt,
         endAt,
         status: 'MINTED',
@@ -47,7 +74,8 @@ export class UsageRightService {
     });
 
     // オンチェーン mint を非同期で試みる（失敗してもオフライン動作を継続）
-    const buyerWallet = input.buyerWallet ?? ethers.ZeroAddress;
+    // buyerWallet が未指定でも owner 情報から解決できれば ZeroAddress を避ける。
+    const buyerWallet = input.buyerWallet ?? resolvedBuyerWallet ?? ethers.ZeroAddress;
     this.usageRightContract.mintUsageRight({
       to: buyerWallet,
       machineId: product.machine?.machineId ?? ethers.ZeroHash,
@@ -87,21 +115,123 @@ export class UsageRightService {
   }
 
   async getRight(usageRightId: string) {
-    return this.prisma.usageRight.findUnique({
+    const right = await this.prisma.usageRight.findUnique({
       where: { id: usageRightId },
       include: { usageProduct: true },
     });
+    if (!right) return null;
+
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: right.usageProduct.venueId },
+      select: { id: true, name: true, address: true },
+    });
+
+    const sessions = await this.prisma.session.findMany({
+      where: { usageRightId },
+      select: { checkedInAt: true, checkedOutAt: true, status: true },
+    });
+    const now = new Date();
+    let usedMinutes = 0;
+    for (const s of sessions) {
+      if (s.status === 'COMPLETED' && s.checkedInAt && s.checkedOutAt) {
+        usedMinutes += Math.ceil((s.checkedOutAt.getTime() - s.checkedInAt.getTime()) / 60000);
+      } else if (s.status === 'IN_USE' && s.checkedInAt) {
+        usedMinutes += Math.ceil((now.getTime() - s.checkedInAt.getTime()) / 60000);
+      }
+    }
+    const totalMinutes = right.usageProduct.durationMinutes ?? 0;
+    const remainingMinutes = Math.max(0, totalMinutes - usedMinutes);
+
+    return {
+      ...right,
+      remainingMinutes,
+      usageProduct: {
+        ...right.usageProduct,
+        venue: venue
+          ? { id: venue.id, name: venue.name, address: venue.address ?? '' }
+          : { id: right.usageProduct.venueId, name: '店舗', address: '' },
+      },
+    };
   }
 
-  async listByUser(userId: string) {
-    return this.prisma.usageRight.findMany({
+  async listByUser(input: { userId?: string; walletAddress?: string }) {
+    const userId = await this.userService.resolveUserId(input);
+    if (!userId) {
+      // walletAddress からユーザーが特定できない場合は 404 相当を返す
+      throw new HttpException(
+        { message: 'ユーザーが見つかりません' },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    const rows = await this.prisma.usageRight.findMany({
       where: { ownerUserId: userId },
       include: {
         usageProduct: {
-          select: { productName: true, usageType: true, priceJpyc: true, venueId: true },
+          select: {
+            productName: true,
+            usageType: true,
+            priceJpyc: true,
+            venueId: true,
+            durationMinutes: true,
+          },
         },
       },
       orderBy: { createdAt: 'desc' },
+    });
+
+    const usageRightIds = rows.map((r) => r.id);
+    const sessions = await this.prisma.session.findMany({
+      where: { usageRightId: { in: usageRightIds } },
+      select: { usageRightId: true, checkedInAt: true, checkedOutAt: true, status: true },
+    });
+
+    const now = new Date();
+    const usedMinutesByRight = new Map<string, number>();
+    for (const s of sessions) {
+      let used = 0;
+      if (s.status === 'COMPLETED' && s.checkedInAt && s.checkedOutAt) {
+        used = Math.ceil((s.checkedOutAt.getTime() - s.checkedInAt.getTime()) / 60000);
+      } else if (s.status === 'IN_USE' && s.checkedInAt) {
+        used = Math.ceil((now.getTime() - s.checkedInAt.getTime()) / 60000);
+      }
+      usedMinutesByRight.set(s.usageRightId, (usedMinutesByRight.get(s.usageRightId) ?? 0) + used);
+    }
+
+    const venueIds = [...new Set(rows.map((r) => r.usageProduct.venueId))];
+    const venues = await this.prisma.venue.findMany({
+      where: { id: { in: venueIds } },
+      select: { id: true, name: true },
+    });
+    const venueMap = new Map(venues.map((v) => [v.id, v.name]));
+
+    const listedRightIds = rows.filter((r) => r.status === 'LISTED').map((r) => r.id);
+    const activeListings =
+      listedRightIds.length > 0
+        ? await this.prisma.usageListing.findMany({
+            where: { usageRightId: { in: listedRightIds }, status: 'ACTIVE' },
+            select: { usageRightId: true, id: true, onchainListingId: true },
+          })
+        : [];
+    const listingByRightId = new Map(activeListings.map((l) => [l.usageRightId, l]));
+
+    return rows.map((r) => {
+      const totalMinutes = r.usageProduct.durationMinutes ?? 0;
+      const usedMinutes = usedMinutesByRight.get(r.id) ?? 0;
+      const remainingMinutes = Math.max(0, totalMinutes - usedMinutes);
+      const listing = listingByRightId.get(r.id);
+      return {
+        ...r,
+        remainingMinutes,
+        ...(listing && { listingId: listing.id, onchainListingId: listing.onchainListingId }),
+        usageProduct: {
+          ...r.usageProduct,
+          venue: {
+            id: r.usageProduct.venueId,
+            name: venueMap.get(r.usageProduct.venueId) ?? '店舗',
+          },
+        },
+      };
     });
   }
 
@@ -143,10 +273,16 @@ export class UsageRightService {
     if (right.transferCount >= right.maxTransferCount) return null;
     if (right.transferCutoffAt && new Date() > right.transferCutoffAt) return null;
 
+    // ウォレットアドレスの場合は userId に解決（FK 制約のため）
+    let ownerUserId = newOwnerUserId.trim();
+    if (/^0x[0-9a-fA-F]{40}$/.test(ownerUserId)) {
+      ownerUserId = await this.userService.findOrCreateByWallet(ownerUserId);
+    }
+
     const updated = await this.prisma.usageRight.update({
       where: { id: usageRightId },
       data: {
-        ownerUserId: newOwnerUserId,
+        ownerUserId,
         transferCount: { increment: 1 },
       },
     });

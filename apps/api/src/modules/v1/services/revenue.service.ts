@@ -360,7 +360,7 @@ export class RevenueService {
   // 配当をクレームする
   // 1. 収益権の所有者確認
   // 2. 重複クレームのチェック
-  // 3. 比例配分計算してクレームレコードを作成する
+  // 3. 按分計算してクレームレコードを作成する
   // -----------------------------------------------------------------------
   async claimRevenue(
     revenueRightId: string,
@@ -423,7 +423,7 @@ export class RevenueService {
       );
     }
 
-    // 比例配分計算: totalAmountJpyc × (amount1155 / totalSupply)
+    // 按分計算: totalAmountJpyc × (amount1155 / totalSupply)
     // totalSupply は amount1155 の総和を分母とする
     const rightsInProgram = await this.prisma.revenueRight.findMany({
       where: { revenueProgramId: revenueRight.revenueProgramId },

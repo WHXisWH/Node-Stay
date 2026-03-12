@@ -1,14 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useAccount, useConnect, useDisconnect } from 'wagmi';
-import { useUserStore } from '../../stores/user.store';
-import { useWalletSync } from '../../hooks/useWalletSync';
-import { useAuth } from '../../hooks/useAuth';
-import { UserService } from '../../services/user.service';
-import { Web3AuthService } from '../../services/web3auth.service';
+import { useLoginFlow } from '../../hooks/useLoginFlow';
+import { useNavState } from '../../hooks/useNavState';
+import { useSyncState } from '../../hooks/useSyncState';
+import { useUiState } from '../../hooks/useUiState';
+import { useUserState } from '../../hooks/useUserState';
 
 const NAV_ITEMS = [
   { href: '/', label: 'ホーム' },
@@ -21,139 +18,43 @@ const NAV_ITEMS = [
   { href: '/revenue', label: '収益' },
 ] as const;
 
-function isActive(pathname: string, href: string): boolean {
-  if (href === '/') return pathname === '/';
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
-
-function shortAddress(address: string): string {
-  return `${address.slice(0, 6)}...${address.slice(-4)}`;
-}
-
 export function Header() {
-  const pathname = usePathname();
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-  const [loginModalOpen, setLoginModalOpen] = useState(false);
-  const [socialHint, setSocialHint] = useState<string | null>(null);
-  const [pendingWalletSignIn, setPendingWalletSignIn] = useState(false);
-  const [socialSigning, setSocialSigning] = useState(false);
+  const {
+    mobileOpen,
+    scrolled,
+    loginModalOpen,
+    closeMobile,
+    toggleMobile,
+    openLoginModal,
+    closeLoginModal,
+  } = useUiState();
+  const { balance, walletAddress, isAuthenticated, walletLabel } = useUserState();
+  const { chainSyncStatus, chainSyncLastError } = useSyncState();
+  const { isNavItemActive } = useNavState();
+  const {
+    socialHint,
+    pendingWalletSignIn,
+    socialSigning,
+    connecting,
+    signing,
+    authError,
+    connectErrorMessage,
+    walletActionLabel,
+    clearMessages,
+    handleWalletLogin,
+    handleSocialLogin,
+    handleLogout,
+  } = useLoginFlow({ walletAddress, isAuthenticated, onCloseModal: closeLoginModal });
 
-  const balance = useUserStore((s) => s.balance?.balanceMinor ?? null);
-  const walletAddress = useUserStore((s) => s.walletAddress);
-  const isAuthenticated = useUserStore((s) => s.isAuthenticated);
-  const setWalletAddress = useUserStore((s) => s.setWalletAddress);
+  const handleOpenModal = () => {
+    clearMessages();
+    openLoginModal();
+  };
 
-  useWalletSync();
-  const { address: wagmiAddress } = useAccount();
-  const { connectors, connectAsync, isPending: connecting, error: connectError } = useConnect();
-  const { disconnect } = useDisconnect();
-  const { signIn, signInWithCustomSigner, signOut, signing, authError } = useAuth(wagmiAddress ?? null);
-
-  useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 10);
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      UserService.getBalance().catch(() => {});
-    }
-  }, [isAuthenticated]);
-
-  useEffect(() => {
-    if (loginModalOpen && isAuthenticated) {
-      setLoginModalOpen(false);
-    }
-  }, [loginModalOpen, isAuthenticated]);
-
-  useEffect(() => {
-    if (!pendingWalletSignIn || !walletAddress) return;
-    setPendingWalletSignIn(false);
-    void signIn();
-  }, [pendingWalletSignIn, walletAddress, signIn]);
-
-  const closeMobile = useCallback(() => setMobileOpen(false), []);
-
-  const openLoginModal = useCallback(() => {
-    setSocialHint(null);
-    setLoginModalOpen(true);
-    setMobileOpen(false);
-  }, []);
-
-  const closeLoginModal = useCallback(() => {
-    setLoginModalOpen(false);
-    setSocialHint(null);
-  }, []);
-
-  const handleWalletLogin = useCallback(async () => {
-    if (isAuthenticated) {
-      closeLoginModal();
-      return;
-    }
-
-    if (wagmiAddress) {
-      await signIn();
-      return;
-    }
-
-    const connector =
-      connectors.find((c) => c.id === 'metaMask')
-      ?? connectors.find((c) => c.id === 'coinbaseWallet')
-      ?? connectors.find((c) => c.id === 'injected')
-      ?? connectors[0];
-    if (!connector) return;
-
-    setPendingWalletSignIn(true);
-    try {
-      await connectAsync({ connector });
-    } catch {
-      setPendingWalletSignIn(false);
-    }
-  }, [closeLoginModal, connectAsync, connectors, isAuthenticated, signIn, wagmiAddress]);
-
-  const handleSocialLogin = useCallback(async () => {
-    setSocialHint(null);
-    setSocialSigning(true);
-
-    try {
-      const social = await Web3AuthService.connectSocial();
-      setWalletAddress(social.address);
-
-      await signInWithCustomSigner({
-        walletAddress: social.address,
-        chainId: Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? '80002'),
-        signMessage: social.signMessage,
-      });
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'ソーシャルログインに失敗しました。';
-      setSocialHint(message);
-    } finally {
-      setSocialSigning(false);
-    }
-  }, [setWalletAddress, signInWithCustomSigner]);
-
-  const handleLogout = useCallback(async () => {
-    signOut();
-    disconnect();
-    await Web3AuthService.logout().catch(() => {});
-    setSocialHint(null);
-    setLoginModalOpen(false);
-  }, [disconnect, signOut]);
-
-  const walletLabel = useMemo(() => {
-    if (!walletAddress) return '未接続';
-    return shortAddress(walletAddress);
-  }, [walletAddress]);
-
-  const walletActionLabel = useMemo(() => {
-    if (connecting || pendingWalletSignIn) return 'ウォレット接続中...';
-    if (signing) return '署名中...';
-    if (isAuthenticated) return '認証済み';
-    if (!walletAddress) return 'ウォレットでログイン';
-    return 'ウォレット署名でログイン';
-  }, [connecting, isAuthenticated, pendingWalletSignIn, signing, walletAddress]);
+  const handleCloseModal = () => {
+    clearMessages();
+    closeLoginModal();
+  };
 
   return (
     <>
@@ -184,7 +85,7 @@ export function Header() {
 
             <nav className="hidden lg:flex items-center gap-1 flex-1 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {NAV_ITEMS.map((item) => {
-                const active = isActive(pathname, item.href);
+                const active = isNavItemActive(item.href);
                 return (
                   <Link
                     key={item.href}
@@ -202,6 +103,30 @@ export function Header() {
             </nav>
 
             <div className="hidden lg:flex items-center gap-2 shrink-0">
+              {/* チェーン同期状態（I2: グローバル可観測） */}
+              {chainSyncStatus?.isSyncing && (
+                <span className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-md whitespace-nowrap ${
+                  scrolled ? 'text-sky-700 bg-sky-50' : 'text-sky-200 bg-white/10'
+                }`} title="ブロック同期中">
+                  <span className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  同期中
+                </span>
+              )}
+              {chainSyncStatus && !chainSyncStatus.isSyncing && !chainSyncLastError && (
+                <span className={`text-xs px-2 py-1 rounded-md whitespace-nowrap ${
+                  scrolled ? 'text-slate-500 bg-slate-50' : 'text-white/60 bg-white/5'
+                }`} title={`Block #${chainSyncStatus.lastProcessedBlock}`}>
+                  同期済
+                </span>
+              )}
+              {chainSyncLastError && (
+                <span className={`text-xs px-2 py-1 rounded-md whitespace-nowrap max-w-[120px] truncate ${
+                  scrolled ? 'text-rose-700 bg-rose-50' : 'text-rose-200 bg-white/10'
+                }`} title={chainSyncLastError}>
+                  同期エラー
+                </span>
+              )}
+
               {walletAddress && !isAuthenticated && (
                 <span className={`text-xs px-2 py-1 rounded-md whitespace-nowrap ${
                   scrolled ? 'text-amber-700 bg-amber-50' : 'text-amber-200 bg-white/10'
@@ -219,7 +144,7 @@ export function Header() {
               )}
 
               <button
-                onClick={openLoginModal}
+                onClick={handleOpenModal}
                 className="px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap bg-brand-600 text-white hover:bg-brand-700 transition-colors"
                 title="ログイン"
               >
@@ -240,7 +165,7 @@ export function Header() {
 
             <div className="lg:hidden ml-auto flex items-center gap-2">
               <button
-                onClick={openLoginModal}
+                onClick={handleOpenModal}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 text-white hover:bg-brand-700"
               >
                 {isAuthenticated ? 'アカウント' : 'ログイン'}
@@ -249,7 +174,7 @@ export function Header() {
                 className={`p-2 rounded-lg ${
                   scrolled ? 'text-slate-600 hover:bg-slate-100' : 'text-white hover:bg-white/10'
                 }`}
-                onClick={() => setMobileOpen((v) => !v)}
+                onClick={toggleMobile}
                 aria-label="メニューを開く"
               >
                 {mobileOpen ? (
@@ -287,7 +212,7 @@ export function Header() {
 
               <div className="pt-2 border-t border-slate-100 flex flex-col gap-1">
                 {NAV_ITEMS.map((item) => {
-                  const active = isActive(pathname, item.href);
+                  const active = isNavItemActive(item.href);
                   return (
                     <Link
                       key={item.href}
@@ -310,7 +235,7 @@ export function Header() {
       {loginModalOpen && (
         <div
           className="fixed inset-0 z-[60] bg-slate-950/60 backdrop-blur-sm p-4"
-          onClick={closeLoginModal}
+          onClick={handleCloseModal}
           role="dialog"
           aria-modal="true"
           aria-label="ログイン方法選択"
@@ -325,7 +250,7 @@ export function Header() {
                 <p className="text-sm text-slate-500 mt-1">ウォレット接続またはソーシャルアカウントでログインできます。</p>
               </div>
               <button
-                onClick={closeLoginModal}
+                onClick={handleCloseModal}
                 className="h-9 w-9 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50"
                 aria-label="閉じる"
               >
@@ -370,11 +295,11 @@ export function Header() {
               </section>
             </div>
 
-            {(socialHint || authError || connectError) && (
+            {(socialHint || authError || connectErrorMessage) && (
               <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-1">
                 {socialHint && <p className="text-xs text-slate-600">{socialHint}</p>}
                 {authError && <p className="text-xs text-red-600">{authError}</p>}
-                {connectError && <p className="text-xs text-red-600">{connectError.message}</p>}
+                {connectErrorMessage && <p className="text-xs text-red-600">{connectErrorMessage}</p>}
               </div>
             )}
           </div>

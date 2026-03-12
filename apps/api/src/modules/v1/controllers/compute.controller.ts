@@ -2,6 +2,7 @@ import { Body, Controller, HttpException, HttpStatus, Param, Post, Get } from '@
 import { z } from 'zod';
 import { FeatureFlagsService } from '../services/featureFlags.service';
 import { ComputeService } from '../services/compute.service';
+import { Public } from '../decorators/public.decorator';
 
 const SubmitJobBody = z.object({
   requesterId: z.string().min(1),
@@ -22,6 +23,7 @@ export class ComputeController {
     private readonly compute: ComputeService,
   ) {}
 
+  @Public()
   @Get('/nodes')
   async nodes() {
     if (!this.flags.computeMarketEnabled()) {

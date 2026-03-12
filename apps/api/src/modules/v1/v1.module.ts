@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { HealthController } from './controllers/health.controller';
 import { PassesController } from './controllers/passes.controller';
 import { IdentityController } from './controllers/identity.controller';
@@ -24,6 +25,7 @@ import { AuthService } from './services/auth.service';
 import { ListingService } from './services/listing.service';
 import { RevenueService } from './services/revenue.service';
 import { RevenueAllocationService } from './services/revenue-allocation.service';
+import { UserService } from './services/user.service';
 import { IdempotencyInterceptor } from './interceptors/idempotency.interceptor';
 
 @Module({
@@ -54,6 +56,11 @@ import { IdempotencyInterceptor } from './interceptors/idempotency.interceptor';
     ListingService,
     RevenueService,
     RevenueAllocationService,
+    UserService,
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
     {
       provide: APP_INTERCEPTOR,
       useClass: IdempotencyInterceptor,

@@ -333,7 +333,7 @@ export class NodeStayClient {
   }
 
   async purchaseUsageRight(
-    input: { productId: string; ownerUserId?: string },
+    input: { productId: string; ownerUserId?: string; buyerWallet?: string },
     idempotencyKey: string,
   ): Promise<{ usageRightId: string }> {
     const key = normalizeIdempotencyKey(idempotencyKey);
@@ -426,6 +426,64 @@ export class NodeStayClient {
     if (params?.minPriceJpyc) q.set('minPriceJpyc', params.minPriceJpyc);
     if (params?.maxPriceJpyc) q.set('maxPriceJpyc', params.maxPriceJpyc);
     return this.json(`/v1/marketplace/listings?${q.toString()}`);
+  }
+
+  /** POST /v1/marketplace/listings — 出品作成 */
+  async createMarketplaceListing(
+    input: {
+      usageRightId: string;
+      sellerUserId: string;
+      priceJpyc: string;
+      expiryAt?: string;
+    },
+    idempotencyKey?: string,
+  ): Promise<{
+    id: string;
+    usageRightId: string;
+    sellerUserId: string;
+    priceJpyc: string;
+    status: string;
+    expiryAt: string | null;
+    soldAt: string | null;
+    onchainListingId: string | null;
+    onchainTxHash: string | null;
+  }> {
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    if (idempotencyKey) {
+      headers['idempotency-key'] = normalizeIdempotencyKey(idempotencyKey);
+    }
+    return this.json('/v1/marketplace/listings', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(input),
+    });
+  }
+
+  /** DELETE /v1/marketplace/listings/:id — 出品キャンセル */
+  async cancelMarketplaceListing(listingId: string, userId: string): Promise<{
+    id: string;
+    status: string;
+    usageRightId: string;
+  }> {
+    return this.json(`/v1/marketplace/listings/${encodeURIComponent(listingId)}`, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
+  }
+
+  /** POST /v1/marketplace/listings/:id/buy — 出品購入 */
+  async buyMarketplaceListing(listingId: string, buyerUserId: string): Promise<{
+    id: string;
+    status: string;
+    usageRightId: string;
+    buyerUserId: string;
+  }> {
+    return this.json(`/v1/marketplace/listings/${encodeURIComponent(listingId)}/buy`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ buyerUserId }),
+    });
   }
 
   // --- Machine Slots API ---

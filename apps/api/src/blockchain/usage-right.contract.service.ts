@@ -13,7 +13,7 @@ export class UsageRightContractService {
   constructor(private readonly blockchain: BlockchainService) {}
 
   private get contract() {
-    const address = process.env.USAGE_RIGHT_ADDRESS;
+    const address = process.env.USAGE_RIGHT_ADDRESS ?? process.env.ACCESS_PASS_NFT_ADDRESS;
     if (!address || !this.blockchain.isEnabled) return null;
     return NodeStayUsageRight__factory.connect(address, this.blockchain.signer);
   }
@@ -37,7 +37,10 @@ export class UsageRightContractService {
   }): Promise<{ tokenId: bigint; txHash: string } | null> {
     const c = this.contract;
     if (!c) {
-      this.logger.debug('UsageRight: コントラクト未設定。mint をスキップ。');
+      const addr = process.env.USAGE_RIGHT_ADDRESS ?? process.env.ACCESS_PASS_NFT_ADDRESS;
+      this.logger.warn(
+        `UsageRight: mint スキップ — address=${addr ?? '(未設定)'}, blockchain.isEnabled=${this.blockchain.isEnabled}`,
+      );
       return null;
     }
 

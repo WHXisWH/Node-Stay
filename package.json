@@ -10,11 +10,16 @@
   },
   "scripts": {
     "dev": "sh -c 'npm run dev -w @nodestay/api & API_PID=$!; npm run dev -w @nodestay/web; kill $API_PID'",
-    "build": "npm run build -ws",
+    "build": "npm run --workspaces --if-present build",
     "test": "npm run test -ws",
     "test:coverage": "npm run test:coverage -ws",
     "lint": "npm run lint -ws",
-    "typecheck": "npm run typecheck -ws"
+    "typecheck": "npm run typecheck -ws",
+    "prisma:generate": "npm run prisma:generate -w @nodestay/api || cd apps/api && npx prisma generate",
+    "prisma:migrate": "cd apps/api && npx prisma migrate deploy",
+    "prisma:studio": "cd apps/api && npx prisma studio",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.1.4"

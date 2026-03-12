@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpException, HttpStatus, Post, Query } from '@nestjs/common';
 import { z } from 'zod';
 import { AuthService } from '../services/auth.service';
+import { Public } from '../decorators/public.decorator';
 
 const VerifyBody = z.object({
   message:   z.string().min(1),
@@ -19,6 +20,7 @@ export class AuthController {
    * GET /v1/auth/nonce?address=0x...
    * SIWE フロー開始：ウォレットアドレス向けのワンタイム nonce を返す
    */
+  @Public()
   @Get('/nonce')
   getNonce(@Query() query: unknown) {
     const parsed = NonceQuery.safeParse(query);
@@ -34,6 +36,7 @@ export class AuthController {
    * SIWE 署名検証 → JWT 発行
    * Body: { message: string, signature: string }
    */
+  @Public()
   @Post('/verify')
   async verify(@Body() body: unknown) {
     const parsed = VerifyBody.safeParse(body);

@@ -35,6 +35,17 @@ export class AuthService {
   // ---------------------------------------------------------------------------
 
   /**
+   * JWT シークレットを取得する。未設定の場合はエラーをスローする。
+   */
+  private getJwtSecret(): string {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      throw new Error('JWT_SECRET 環境変数が設定されていません');
+    }
+    return secret;
+  }
+
+  /**
    * SIWE メッセージと署名を検証し、有効であれば JWT を返す。
    * @throws 検証失敗時に Error をスロー
    */
@@ -59,10 +70,9 @@ export class AuthService {
     this.nonceStore.delete(address);
 
     // JWT を発行（有効期限 24 時間）
-    const secret = process.env.JWT_SECRET ?? 'nodestay-dev-secret';
     const token = jwt.sign(
       { sub: address, address },
-      secret,
+      this.getJwtSecret(),
       { expiresIn: '24h' },
     );
 
@@ -75,8 +85,7 @@ export class AuthService {
 
   /** Authorization ヘッダー等から JWT を検証し、ウォレットアドレスを返す */
   verifyToken(token: string): { address: string } {
-    const secret = process.env.JWT_SECRET ?? 'nodestay-dev-secret';
-    const payload = jwt.verify(token, secret) as { address: string };
+    const payload = jwt.verify(token, this.getJwtSecret()) as { address: string };
     return { address: payload.address };
   }
 }

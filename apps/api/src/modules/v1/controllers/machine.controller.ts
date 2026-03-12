@@ -1,6 +1,7 @@
 import { Body, Controller, Get, HttpException, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
 import { z } from 'zod';
 import { MachineService } from '../services/machine.service';
+import { Public } from '../decorators/public.decorator';
 
 const RegisterBody = z.object({
   venueId:      z.string().min(1),
@@ -32,13 +33,15 @@ export class MachineController {
     return { machineId: m.id, onchainMachineId: m.machineId, status: m.status };
   }
 
-  // GET /v1/machines?venueId=xxx&status=ACTIVE
+  // GET /v1/machines?venueId=xxx&status=ACTIVE（公開）
+  @Public()
   @Get()
   async list(@Query('venueId') venueId?: string, @Query('status') status?: string) {
     return this.machine.list({ venueId, status });
   }
 
-  // GET /v1/machines/:id
+  // GET /v1/machines/:id（公開）
+  @Public()
   @Get('/:id')
   async get(@Param('id') id: string) {
     const m = await this.machine.get(id);
@@ -57,7 +60,8 @@ export class MachineController {
     return { machineId: m.id, status: m.status };
   }
 
-  // GET /v1/machines/:id/slots?from=ISO&to=ISO
+  // GET /v1/machines/:id/slots?from=ISO&to=ISO（公開）
+  @Public()
   @Get('/:id/slots')
   async slots(
     @Param('id') id: string,

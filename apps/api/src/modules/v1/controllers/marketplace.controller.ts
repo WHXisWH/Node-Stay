@@ -1,6 +1,9 @@
 import { Body, Controller, Delete, Get, HttpException, HttpStatus, Param, Post, Query } from '@nestjs/common';
 import { z } from 'zod';
 import { ListingService } from '../services/listing.service';
+import { Public } from '../decorators/public.decorator';
+import { CurrentUser, AuthenticatedUser } from '../decorators/current-user.decorator';
+import { UserService } from '../services/user.service';
 
 // -----------------------------------------------------------------------
 // 出品作成リクエストのバリデーションスキーマ
@@ -32,12 +35,16 @@ const BuyListingBody = z.object({
 // -----------------------------------------------------------------------
 @Controller('/v1/marketplace')
 export class MarketplaceController {
-  constructor(private readonly listing: ListingService) {}
+  constructor(
+    private readonly listing: ListingService,
+    private readonly userService: UserService,
+  ) {}
 
   // -----------------------------------------------------------------------
   // GET /v1/marketplace/listings — アクティブな出品一覧を取得する
   // クエリパラメータ: venueId?, minPrice?, maxPrice?
   // -----------------------------------------------------------------------
+  @Public()
   @Get('/listings')
   async listListings(
     @Query('venueId')   venueId?: string,
@@ -54,6 +61,7 @@ export class MarketplaceController {
   // -----------------------------------------------------------------------
   // GET /v1/marketplace/listings/:id — 出品詳細を取得する
   // -----------------------------------------------------------------------
+  @Public()
   @Get('/listings/:id')
   async getListing(@Param('id') id: string) {
     const result = await this.listing.getListingById(id);
@@ -62,46 +70,59 @@ export class MarketplaceController {
   }
 
   // -----------------------------------------------------------------------
-  // POST /v1/marketplace/listings — 利用権を出品する
+  // POST /v1/marketplace/listings — 利用権を出品する（認証必須）
   // -----------------------------------------------------------------------
   @Post('/listings')
-  async createListing(@Body() body: unknown) {
+  async createListing(@Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
     const parsed = CreateListingBody.safeParse(body);
     if (!parsed.success) {
       throw new HttpException({ message: '入力が不正です' }, HttpStatus.BAD_REQUEST);
     }
 
+    // ウォレットアドレスから userId を解決
+    const sellerUserId = parsed.data.sellerUserId || await this.userService.findOrCreateByWallet(user.address);
+
     return this.listing.createListing({
       usageRightId: parsed.data.usageRightId,
-      sellerUserId: parsed.data.sellerUserId,
+      sellerUserId,
       priceJpyc:    parsed.data.priceJpyc,
       expiryAt:     parsed.data.expiryAt ? new Date(parsed.data.expiryAt) : undefined,
     });
   }
 
   // -----------------------------------------------------------------------
-  // DELETE /v1/marketplace/listings/:id — 出品をキャンセルする
+  // DELETE /v1/marketplace/listings/:id — 出品をキャンセルする（認証必須）
   // -----------------------------------------------------------------------
   @Delete('/listings/:id')
-  async cancelListing(@Param('id') id: string, @Body() body: unknown) {
+  async cancelListing(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     const parsed = CancelListingBody.safeParse(body);
-    if (!parsed.success) {
-      throw new HttpException({ message: '入力が不正です（userId 必須）' }, HttpStatus.BAD_REQUEST);
-    }
+    // userId が指定されていなければウォレットから解決
+    const userId = parsed.success && parsed.data.userId
+      ? parsed.data.userId
+      : await this.userService.findOrCreateByWallet(user.address);
 
-    return this.listing.cancelListing(id, parsed.data.userId);
+    return this.listing.cancelListing(id, userId);
   }
 
   // -----------------------------------------------------------------------
-  // POST /v1/marketplace/listings/:id/buy — 出品を購入する
+  // POST /v1/marketplace/listings/:id/buy — 出品を購入する（認証必須）
   // -----------------------------------------------------------------------
   @Post('/listings/:id/buy')
-  async buyListing(@Param('id') id: string, @Body() body: unknown) {
+  async buyListing(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
     const parsed = BuyListingBody.safeParse(body);
-    if (!parsed.success) {
-      throw new HttpException({ message: '入力が不正です（buyerUserId 必須）' }, HttpStatus.BAD_REQUEST);
-    }
+    // buyerUserId が指定されていなければウォレットから解決
+    const buyerUserId = parsed.success && parsed.data.buyerUserId
+      ? parsed.data.buyerUserId
+      : await this.userService.findOrCreateByWallet(user.address);
 
-    return this.listing.buyListing(id, parsed.data.buyerUserId);
+    return this.listing.buyListing(id, buyerUserId);
   }
 }

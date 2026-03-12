@@ -2,6 +2,7 @@ import { Body, Controller, HttpException, HttpStatus, Param, Post, Put } from '@
 import { z } from 'zod';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { VenueService } from '../services/venue.service';
+import { CurrentUser, type AuthenticatedUser } from '../decorators/current-user.decorator';
 
 const CreateVenueBody = z.object({
   merchantId: z.string().min(1),
@@ -29,7 +30,6 @@ const UpsertProductBody = z.object({
 const CreateDisputeBody = z.object({
   referenceType: z.string().min(1),
   referenceId: z.string().min(1),
-  openerUserId: z.string().optional(),
 });
 
 @Controller('/v1/merchant')
@@ -40,7 +40,7 @@ export class MerchantController {
   ) {}
 
   @Post('/venues')
-  async createVenue(@Body() body: unknown) {
+  async createVenue(@CurrentUser() _user: AuthenticatedUser, @Body() body: unknown) {
     const parsed = CreateVenueBody.safeParse(body);
     if (!parsed.success) throw new HttpException({ message: '入力が不正です' }, HttpStatus.BAD_REQUEST);
 
@@ -64,7 +64,11 @@ export class MerchantController {
   }
 
   @Put('/venues/:venueId/products')
-  async upsertProduct(@Param('venueId') venueId: string, @Body() body: unknown) {
+  async upsertProduct(
+    @CurrentUser() _user: AuthenticatedUser,
+    @Param('venueId') venueId: string,
+    @Body() body: unknown,
+  ) {
     const parsed = UpsertProductBody.safeParse(body);
     if (!parsed.success) throw new HttpException({ message: '入力が不正です' }, HttpStatus.BAD_REQUEST);
 
@@ -84,7 +88,7 @@ export class MerchantController {
   }
 
   @Post('/disputes')
-  async createDispute(@Body() body: unknown) {
+  async createDispute(@CurrentUser() _user: AuthenticatedUser, @Body() body: unknown) {
     const parsed = CreateDisputeBody.safeParse(body);
     if (!parsed.success) throw new HttpException({ message: '入力が不正です' }, HttpStatus.BAD_REQUEST);
 
@@ -92,7 +96,7 @@ export class MerchantController {
       data: {
         referenceType: parsed.data.referenceType,
         referenceId: parsed.data.referenceId,
-        openerUserId: parsed.data.openerUserId ?? null,
+        openerUserId: null,
       },
     });
 

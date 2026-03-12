@@ -1,6 +1,7 @@
 import { Body, Controller, HttpException, HttpStatus, Post } from '@nestjs/common';
 import { z } from 'zod';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { Public } from '../decorators/public.decorator';
 
 const IdentityVerifyBody = z.object({
   userId: z.string().min(1),
@@ -11,6 +12,7 @@ const IdentityVerifyBody = z.object({
 export class IdentityController {
   constructor(private readonly prisma: PrismaService) {}
 
+  @Public()
   @Post('/verify')
   async verify(@Body() body: unknown) {
     const parsed = IdentityVerifyBody.safeParse(body);

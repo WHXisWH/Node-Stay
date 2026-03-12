@@ -16,7 +16,18 @@ function createAuthenticatedFetch(): typeof fetch {
     if (jwt) {
       headers['authorization'] = `Bearer ${jwt}`;
     }
-    return fetch(input, { ...init, headers });
+    try {
+      return await fetch(input, { ...init, headers });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const isNetworkError =
+        e instanceof TypeError ||
+        /fetch|network|load|接続|failed to fetch/i.test(msg);
+      if (isNetworkError) {
+        throw new Error('ネットワークに接続できません。接続状況とログイン状態をご確認ください。');
+      }
+      throw e;
+    }
   };
 }
 

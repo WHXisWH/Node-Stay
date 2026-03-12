@@ -4,10 +4,11 @@ import { z } from 'zod';
 import { IdempotencyService } from '../services/idempotency.service';
 import { UsageRightService } from '../services/usage-right.service';
 import { FeatureFlagsService } from '../services/featureFlags.service';
+import { CurrentUser, type AuthenticatedUser } from '../decorators/current-user.decorator';
 
 const PurchaseBody = z.object({
   productId:   z.string().min(1),
-  ownerUserId: z.string().optional(),
+  buyerWallet: z.string().optional(),
 });
 
 const TransferBody = z.object({
@@ -22,12 +23,9 @@ export class PassesController {
     private readonly flags: FeatureFlagsService,
   ) {}
 
-  // -----------------------------------------------------------------------
-  // POST /v1/usage-rights/purchase — 購入
-  // -----------------------------------------------------------------------
-
   @Post('/purchase')
   async purchase(
+    @CurrentUser() user: AuthenticatedUser,
     @Body() body: unknown,
     @Headers('idempotency-key') rawKey: string | undefined,
   ) {
@@ -47,8 +45,9 @@ export class PassesController {
     }
 
     const right = await this.usageRight.purchase({
-      ownerUserId: parsed.data.ownerUserId ?? null,
+      ownerUserId: user.address,
       productId:   parsed.data.productId,
+      buyerWallet: parsed.data.buyerWallet ?? user.address,
     });
     if (!right) throw new HttpException({ message: '商品が見つかりません' }, HttpStatus.NOT_FOUND);
 
@@ -57,19 +56,10 @@ export class PassesController {
     return response;
   }
 
-  // -----------------------------------------------------------------------
-  // GET /v1/usage-rights?ownerUserId=xxx — マイ利用権一覧
-  // -----------------------------------------------------------------------
-
   @Get()
-  async list(@Query('ownerUserId') ownerUserId?: string) {
-    if (!ownerUserId) throw new HttpException({ message: 'ownerUserId クエリパラメータが必要です' }, HttpStatus.BAD_REQUEST);
-    return this.usageRight.listByUser(ownerUserId);
+  async list(@CurrentUser() user: AuthenticatedUser) {
+    return this.usageRight.listByUser({ walletAddress: user.address });
   }
-
-  // -----------------------------------------------------------------------
-  // GET /v1/usage-rights/:id — 詳細
-  // -----------------------------------------------------------------------
 
   @Get('/:id')
   async get(@Param('id') id: string) {
@@ -78,23 +68,16 @@ export class PassesController {
     return right;
   }
 
-  // -----------------------------------------------------------------------
-  // POST /v1/usage-rights/:id/cancel — キャンセル
-  // -----------------------------------------------------------------------
-
   @Post('/:id/cancel')
-  async cancel(@Param('id') id: string) {
+  async cancel(@CurrentUser() _user: AuthenticatedUser, @Param('id') id: string) {
     const result = await this.usageRight.cancel(id);
     if (!result) throw new HttpException({ message: '利用権が見つからないか、キャンセルできません' }, HttpStatus.UNPROCESSABLE_ENTITY);
     return { usageRightId: result.id, status: result.status };
   }
 
-  // -----------------------------------------------------------------------
-  // POST /v1/usage-rights/:usageRightId/transfer — 譲渡
-  // -----------------------------------------------------------------------
-
   @Post('/:usageRightId/transfer')
   async transfer(
+    @CurrentUser() _user: AuthenticatedUser,
     @Param('usageRightId') usageRightId: string,
     @Body() body: unknown,
     @Headers('idempotency-key') rawKey: string | undefined,
@@ -116,7 +99,6 @@ export class PassesController {
       return existing.response;
     }
 
-    // 転送前のバリデーション（サーバーサイドで転送ルールを強制）
     const right = await this.usageRight.findById(usageRightId);
     if (!right) throw new HttpException({ message: '利用権が見つかりません' }, HttpStatus.NOT_FOUND);
     if (!right.transferable) throw new HttpException({ message: 'この利用権は譲渡不可です' }, HttpStatus.FORBIDDEN);

@@ -11,6 +11,9 @@ import {
 import { z } from 'zod';
 import { RevenueService } from '../services/revenue.service';
 import { RevenueAllocationService } from '../services/revenue-allocation.service';
+import { Public } from '../decorators/public.decorator';
+import { CurrentUser, AuthenticatedUser } from '../decorators/current-user.decorator';
+import { UserService } from '../services/user.service';
 
 // -----------------------------------------------------------------------
 // クレームリクエストのバリデーションスキーマ
@@ -65,12 +68,14 @@ export class RevenueController {
   constructor(
     private readonly revenue: RevenueService,
     private readonly revenueAllocation: RevenueAllocationService,
+    private readonly userService: UserService,
   ) {}
 
   // -----------------------------------------------------------------------
-  // GET /v1/revenue/programs — 収益プログラム一覧を取得する
+  // GET /v1/revenue/programs — 収益プログラム一覧を取得する（公開）
   // クエリパラメータ: machineId?
   // -----------------------------------------------------------------------
+  @Public()
   @Get('/programs')
   async listPrograms(@Query('machineId') machineId?: string) {
     return this.revenue.listPrograms(machineId);
@@ -140,8 +145,9 @@ export class RevenueController {
   }
 
   // -----------------------------------------------------------------------
-  // GET /v1/revenue/programs/:programId — 収益プログラム詳細を取得する
+  // GET /v1/revenue/programs/:programId — 収益プログラム詳細を取得する（公開）
   // -----------------------------------------------------------------------
+  @Public()
   @Get('/programs/:programId')
   async getProgram(@Param('programId') programId: string) {
     return this.revenue.getProgram(programId);
@@ -165,9 +171,10 @@ export class RevenueController {
   }
 
   // -----------------------------------------------------------------------
-  // GET /v1/revenue/programs/:programId/allocations
+  // GET /v1/revenue/programs/:programId/allocations（公開）
   // 指定プログラムのアロケーション一覧を取得する
   // -----------------------------------------------------------------------
+  @Public()
   @Get('/programs/:programId/allocations')
   async listAllocations(@Param('programId') programId: string) {
     return this.revenue.listAllocations(programId);

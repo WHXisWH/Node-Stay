@@ -70,7 +70,7 @@ export class MachineService {
     }).then((result) => {
       if (result) {
         this.logger.log(`オンチェーン登録成功: machineId=${machine.id} txHash=${result.txHash}`);
-        // onchain_tx_hash を先に書き込む（イベントリスナーが token_id を反映）
+        // onchain_tx_hash を先に書き込む（イベントリスナーが token_id を回写）
         return this.prisma.machine.update({
           where: { id: machine.id },
           data: { onchainTxHash: result.txHash },
@@ -136,7 +136,7 @@ export class MachineService {
   }
 
   /**
-   * スロット予約 — 重複チェック付きトランザクション（二重売り防止）
+   * スロット予約 — 重複チェック付きトランザクション（双売り防護）
    * 対象時間帯に既存の OCCUPIED スロットがあれば CONFLICT 例外を投げる
    */
   async reserveSlot(input: {

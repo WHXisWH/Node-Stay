@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 
 @Injectable()
@@ -6,6 +6,18 @@ export class VenueService implements OnModuleInit {
   private readonly logger = new Logger(VenueService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Prisma エラーを 503 に変換し、ログに詳細を残す */
+  private handlePrismaError(e: unknown, context: string): never {
+    const msg = e instanceof Error ? e.message : String(e);
+    this.logger.warn(`${context}: ${msg}`);
+    throw new HttpException(
+      {
+        message: 'データベースに接続できません。PostgreSQL が起動しているか、DATABASE_URL を確認してください。',
+      },
+      HttpStatus.SERVICE_UNAVAILABLE,
+    );
+  }
 
   // 初回起動時にデモデータを投入（DBが空の場合のみ）
   async onModuleInit() {
@@ -19,39 +31,75 @@ export class VenueService implements OnModuleInit {
   }
 
   async listVenues() {
-    return this.prisma.venue.findMany({
-      select: {
-        id: true,
-        name: true,
-        address: true,
-        timezone: true,
-        latitude: true,
-        longitude: true,
-        amenities: true,
-        openHours: true,
-        totalSeats: true,
-        status: true,
-      },
-    });
+    try {
+      const venues = await this.prisma.venue.findMany({
+        where: { status: 'ACTIVE' },
+        select: {
+          id: true,
+          name: true,
+          address: true,
+          timezone: true,
+          latitude: true,
+          longitude: true,
+          amenities: true,
+          openHours: true,
+          totalSeats: true,
+          status: true,
+          _count: {
+            select: {
+              sessions: { where: { status: 'IN_USE' } },
+            },
+          },
+        },
+      });
+
+      const venueIds = venues.map((v) => v.id);
+      const cheapestProducts = await this.prisma.usageProduct.groupBy({
+        by: ['venueId'],
+        where: { venueId: { in: venueIds }, status: 'ACTIVE' },
+        _min: { priceJpyc: true },
+      });
+      const cheapestMap = new Map(
+        cheapestProducts.map((p) => [p.venueId, p._min.priceJpyc]),
+      );
+
+      return venues.map((v) => {
+        const cheapestRaw = cheapestMap.get(v.id);
+        const cheapestPlanMinor = cheapestRaw ? Number(cheapestRaw) * 100 : undefined;
+        const availableSeats = Math.max(0, v.totalSeats - v._count.sessions);
+        const { _count: _, ...rest } = v;
+        return { ...rest, cheapestPlanMinor, availableSeats };
+      });
+    } catch (e) {
+      this.handlePrismaError(e, 'listVenues');
+    }
   }
 
   async getVenue(venueId: string) {
-    return this.prisma.venue.findUnique({ where: { id: venueId } });
+    try {
+      return await this.prisma.venue.findUnique({ where: { id: venueId } });
+    } catch (e) {
+      this.handlePrismaError(e, 'getVenue');
+    }
   }
 
   async listUsageProductsByVenue(venueId: string) {
-    return this.prisma.usageProduct.findMany({
-      where: { venueId, status: 'ACTIVE' },
-      select: {
-        id: true,
-        productName: true,
-        durationMinutes: true,
-        priceJpyc: true,
-        usageType: true,
-        transferable: true,
-        maxTransferCount: true,
-      },
-    });
+    try {
+      return await this.prisma.usageProduct.findMany({
+        where: { venueId, status: 'ACTIVE' },
+        select: {
+          id: true,
+          productName: true,
+          durationMinutes: true,
+          priceJpyc: true,
+          usageType: true,
+          transferable: true,
+          maxTransferCount: true,
+        },
+      });
+    } catch (e) {
+      this.handlePrismaError(e, 'listUsageProductsByVenue');
+    }
   }
 
   // -----------------------------------------------------------------------
