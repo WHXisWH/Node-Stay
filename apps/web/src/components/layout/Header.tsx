@@ -58,6 +58,7 @@ export function Header() {
     socialHint,
     pendingWalletSignIn,
     socialSigning,
+    isAuthenticating,
     connecting,
     signing,
     authError,
@@ -88,7 +89,6 @@ export function Header() {
   };
 
   const handleOpenModal = () => {
-    if (isAuthenticated) return;
     clearMessages();
     openLoginModal();
   };
@@ -212,11 +212,10 @@ export function Header() {
 
               <button
                 onClick={handleOpenModal}
-                disabled={isAuthenticated}
-                className="px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap bg-brand-600 text-white hover:bg-brand-700 transition-colors disabled:bg-slate-400 disabled:cursor-not-allowed"
-                title={isAuthenticated ? '認証済み' : 'ログイン'}
+                className="px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap bg-brand-600 text-white hover:bg-brand-700 transition-colors"
+                title={isAuthenticated ? 'アカウント' : 'ログイン'}
               >
-                {isAuthenticated ? '認証済み' : 'ログイン'}
+                {isAuthenticated ? 'アカウント' : 'ログイン'}
               </button>
 
               {isAuthenticated && (
@@ -234,10 +233,9 @@ export function Header() {
             <div className="lg:hidden ml-auto flex items-center gap-2">
               <button
                 onClick={handleOpenModal}
-                disabled={isAuthenticated}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 text-white hover:bg-brand-700 disabled:bg-slate-400 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 text-white hover:bg-brand-700"
               >
-                {isAuthenticated ? '認証済み' : 'ログイン'}
+                {isAuthenticated ? 'アカウント' : 'ログイン'}
               </button>
               <button
                 className={`p-2 rounded-lg ${scrolled ? 'text-slate-600 hover:bg-slate-100' : 'text-white hover:bg-white/10'}`}
@@ -350,7 +348,13 @@ export function Header() {
 
             {isAuthenticated && (
               <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                すでに認証済みです（{authMethodLabel}）。必要な場合はヘッダーの「ログアウト」を使用してください。
+                <p>現在ログイン済みです（{authMethodLabel}）。</p>
+                <button
+                  onClick={() => void handleLogout()}
+                  className="mt-3 inline-flex rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+                >
+                  ログアウト
+                </button>
               </div>
             )}
 
@@ -365,7 +369,7 @@ export function Header() {
                 </p>
                 <button
                   onClick={() => void handleSocialLogin()}
-                  disabled={socialSigning || signing || isAuthenticated}
+                  disabled={socialSigning || signing || isAuthenticating || isAuthenticated}
                   className="w-full rounded-xl px-4 py-3 text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed mt-auto"
                 >
                   {socialSigning ? '認証画面を起動中...' : 'ソーシャルでログイン'}
@@ -397,7 +401,7 @@ export function Header() {
                 )}
                 <button
                   onClick={() => void handleWalletLogin()}
-                  disabled={connecting || signing || isAuthenticated || pendingWalletSignIn}
+                  disabled={connecting || signing || isAuthenticating || isAuthenticated || pendingWalletSignIn}
                   className="w-full rounded-xl px-4 py-3 text-sm font-semibold bg-orange-600 text-white hover:bg-orange-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed mt-auto"
                 >
                   {walletActionLabel}

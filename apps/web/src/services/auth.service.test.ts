@@ -6,14 +6,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AuthService } from './auth.service';
 
 const mockSetJwt = vi.fn();
+const mockSetWalletAddress = vi.fn();
 const mockSignOut = vi.fn();
 const mockGetState = vi.fn(() => ({
+  setWalletAddress: mockSetWalletAddress,
   setJwt: mockSetJwt,
   signOut: mockSignOut,
   isAuthenticated: false,
 }));
 
-vi.mock('../stores/user.store', () => ({
+vi.mock('../models/stores/user.store', () => ({
   useUserStore: {
     getState: () => mockGetState(),
   },
@@ -30,6 +32,7 @@ describe('AuthService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockGetState.mockReturnValue({
+      setWalletAddress: mockSetWalletAddress,
       setJwt: mockSetJwt,
       signOut: mockSignOut,
       isAuthenticated: false,
@@ -61,6 +64,11 @@ describe('AuthService', () => {
       expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls[1][0]).toContain('/v1/auth/verify');
       expect(signMessage).toHaveBeenCalledWith(expect.stringContaining('Chain ID: 80002'));
       expect(signMessage).toHaveBeenCalledWith(expect.stringContaining('Nonce: n123'));
+      expect(mockSetWalletAddress).toHaveBeenCalledWith(
+        expect.stringMatching(/^0x[0-9a-fA-F]{40}$/),
+      );
+      const savedAddress = mockSetWalletAddress.mock.calls[0]?.[0] as string;
+      expect(savedAddress.toLowerCase()).toBe(walletAddress.toLowerCase());
       expect(mockSetJwt).toHaveBeenCalledWith('jwt.xxx.yyy');
     });
 
@@ -123,6 +131,7 @@ describe('AuthService', () => {
   describe('isAuthenticated', () => {
     it('returns false when store isAuthenticated is false', () => {
       mockGetState.mockReturnValue({
+        setWalletAddress: mockSetWalletAddress,
         setJwt: mockSetJwt,
         signOut: mockSignOut,
         isAuthenticated: false,
@@ -132,6 +141,7 @@ describe('AuthService', () => {
 
     it('returns true when store isAuthenticated is true', () => {
       mockGetState.mockReturnValue({
+        setWalletAddress: mockSetWalletAddress,
         setJwt: mockSetJwt,
         signOut: mockSignOut,
         isAuthenticated: true,
@@ -141,10 +151,11 @@ describe('AuthService', () => {
 
     it('returns false when store returns undefined (falsy)', () => {
       mockGetState.mockReturnValue({
+        setWalletAddress: mockSetWalletAddress,
         setJwt: mockSetJwt,
         signOut: mockSignOut,
         isAuthenticated: undefined,
-      } as unknown as { setJwt: typeof mockSetJwt; signOut: typeof mockSignOut; isAuthenticated: boolean });
+      } as unknown as { setWalletAddress: typeof mockSetWalletAddress; setJwt: typeof mockSetJwt; signOut: typeof mockSignOut; isAuthenticated: boolean });
       expect(AuthService.isAuthenticated()).toBe(false);
     });
   });

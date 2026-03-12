@@ -8,6 +8,9 @@ import { useUserStore } from '../models/stores/user.store';
 import { getAddress } from 'viem';
 
 const API_BASE = getApiBaseUrl(process.env.NEXT_PUBLIC_API_BASE_URL);
+const NONCE_TIMEOUT_MS = 12000;
+const SIGN_TIMEOUT_MS = 45000;
+const VERIFY_TIMEOUT_MS = 15000;
 
 /**
  * EIP-4361 準拠の SIWE メッセージを組み立てる
@@ -40,6 +43,36 @@ function normalizeChainId(chainId: number): number {
   return Number.isInteger(chainId) && chainId > 0 ? chainId : 137;
 }
 
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error: unknown) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('サーバー応答がタイムアウトしました。時間をおいて再試行してください。');
+    }
+    throw error;
+  } finally {
+    globalThis.clearTimeout(timeout);
+  }
+}
+
+async function withTimeout<T>(task: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = globalThis.setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  try {
+    return await Promise.race([task, timeoutPromise]);
+  } finally {
+    if (timeoutId !== null) {
+      globalThis.clearTimeout(timeoutId);
+    }
+  }
+}
+
 export interface SignInParams {
   walletAddress: `0x${string}`;
   chainId: number;
@@ -54,7 +87,11 @@ class AuthServiceClass {
     const { walletAddress: rawAddress, chainId: targetChainId, signMessage } = params;
     const address = getAddress(rawAddress);
 
-    const nonceRes = await fetch(`${API_BASE}/v1/auth/nonce?address=${address}`);
+    const nonceRes = await fetchWithTimeout(
+      `${API_BASE}/v1/auth/nonce?address=${address}`,
+      {},
+      NONCE_TIMEOUT_MS,
+    );
     if (!nonceRes.ok) throw new Error('nonce の取得に失敗しました');
     const { nonce } = (await nonceRes.json()) as { nonce: string };
 
@@ -67,19 +104,28 @@ class AuthServiceClass {
       domain,
       uri,
     });
-    const signature = await signMessage(message);
+    const signature = await withTimeout(
+      signMessage(message),
+      SIGN_TIMEOUT_MS,
+      '署名確認がタイムアウトしました。ウォレット画面を確認して再試行してください。',
+    );
 
-    const verifyRes = await fetch(`${API_BASE}/v1/auth/verify`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ message, signature }),
-    });
+    const verifyRes = await fetchWithTimeout(
+      `${API_BASE}/v1/auth/verify`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message, signature }),
+      },
+      VERIFY_TIMEOUT_MS,
+    );
     if (!verifyRes.ok) {
       const err = (await verifyRes.json().catch(() => ({}))) as { message?: string };
       throw new Error(err.message ?? '認証に失敗しました');
     }
     const { token } = (await verifyRes.json()) as { token: string };
 
+    useUserStore.getState().setWalletAddress(address);
     useUserStore.getState().setJwt(token);
     this.setAuthCookie(true);
   }

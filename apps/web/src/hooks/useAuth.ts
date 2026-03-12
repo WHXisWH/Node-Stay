@@ -10,12 +10,12 @@ import { useSignMessage, useChainId } from 'wagmi';
 import { AuthService } from '../services/auth.service';
 
 export interface UseAuthReturn {
-  signIn: () => Promise<void>;
+  signIn: () => Promise<boolean>;
   signInWithCustomSigner: (params: {
     walletAddress: `0x${string}`;
     signMessage: (message: string) => Promise<string>;
     chainId?: number;
-  }) => Promise<void>;
+  }) => Promise<boolean>;
   signOut: () => void;
   signing: boolean;
   authError: string | null;
@@ -29,8 +29,8 @@ export function useAuth(walletAddress: `0x${string}` | null): UseAuthReturn {
   const [signing, setSigning] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  const signIn = useCallback(async () => {
-    if (!walletAddress) return;
+  const signIn = useCallback(async (): Promise<boolean> => {
+    if (!walletAddress) return false;
     setSigning(true);
     setAuthError(null);
     try {
@@ -39,6 +39,7 @@ export function useAuth(walletAddress: `0x${string}` | null): UseAuthReturn {
         chainId,
         signMessage: (message) => signMessageAsync({ message }),
       });
+      return true;
     } catch (err: unknown) {
       const msg =
         err instanceof TypeError && err.message.includes('Failed to fetch')
@@ -49,6 +50,7 @@ export function useAuth(walletAddress: `0x${string}` | null): UseAuthReturn {
       if (!msg.includes('User rejected') && !msg.includes('user rejected')) {
         setAuthError(msg);
       }
+      return false;
     } finally {
       setSigning(false);
     }
@@ -58,7 +60,7 @@ export function useAuth(walletAddress: `0x${string}` | null): UseAuthReturn {
     walletAddress: `0x${string}`;
     signMessage: (message: string) => Promise<string>;
     chainId?: number;
-  }) => {
+  }): Promise<boolean> => {
     setSigning(true);
     setAuthError(null);
     try {
@@ -67,11 +69,13 @@ export function useAuth(walletAddress: `0x${string}` | null): UseAuthReturn {
         chainId: params.chainId ?? chainId,
         signMessage: params.signMessage,
       });
+      return true;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '認証エラーが発生しました';
       if (!msg.includes('User rejected') && !msg.includes('user rejected')) {
         setAuthError(msg);
       }
+      return false;
     } finally {
       setSigning(false);
     }

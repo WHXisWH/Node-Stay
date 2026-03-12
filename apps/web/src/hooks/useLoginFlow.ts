@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAccount, useConnect, useDisconnect } from 'wagmi';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useUserStore } from '../models/stores/user.store';
 import { useAuth } from './useAuth';
 import { Web3AuthService } from '../services/web3auth.service';
@@ -20,6 +20,7 @@ export interface UseLoginFlowReturn {
   socialHint: string | null;
   pendingWalletSignIn: boolean;
   socialSigning: boolean;
+  isAuthenticating: boolean;
   connecting: boolean;
   signing: boolean;
   authError: string | null;
@@ -40,9 +41,11 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
   const [socialHint, setSocialHint] = useState<string | null>(null);
   const [pendingWalletSignIn, setPendingWalletSignIn] = useState(false);
   const [socialSigning, setSocialSigning] = useState(false);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
   const setWalletAddress = useUserStore((s) => s.setWalletAddress);
   const setLoginMethod = useUserStore((s) => s.setLoginMethod);
   const router = useRouter();
+  const pathname = usePathname();
 
   const { address: wagmiAddress } = useAccount();
   const { connectors, connectAsync, isPending: connecting, error: connectError } = useConnect();
@@ -53,6 +56,7 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
     if (!isAuthenticated) return;
 
     onCloseModal();
+    router.refresh();
     if (typeof window !== 'undefined') {
       const query = new URLSearchParams(window.location.search);
       const redirect = query.get('redirect');
@@ -63,16 +67,37 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
   }, [isAuthenticated, onCloseModal, router]);
 
   useEffect(() => {
-    if (!pendingWalletSignIn || !walletAddress) return;
+    if (!pendingWalletSignIn || !wagmiAddress) return;
+
+    let active = true;
     setPendingWalletSignIn(false);
-    void signIn();
-  }, [pendingWalletSignIn, walletAddress, signIn]);
+    void (async () => {
+      setIsAuthenticating(true);
+      const ok = await signIn();
+      if (!active) return;
+      setIsAuthenticating(false);
+      if (!ok) {
+        setLoginMethod(null);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [pendingWalletSignIn, setLoginMethod, signIn, wagmiAddress]);
+
+  const isProtectedPath = useCallback((path: string) => {
+    const prefixes = ['/usage-rights', '/sessions', '/revenue', '/merchant', '/passes'];
+    return prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`));
+  }, []);
 
   const clearMessages = useCallback(() => {
     setSocialHint(null);
   }, []);
 
   const handleWalletLogin = useCallback(async () => {
+    setSocialHint(null);
+
     if (isAuthenticated) {
       onCloseModal();
       return;
@@ -80,66 +105,94 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
 
     if (wagmiAddress) {
       setLoginMethod('wallet');
-      await signIn();
+      setIsAuthenticating(true);
+      const ok = await signIn();
+      setIsAuthenticating(false);
+      if (!ok) {
+        setLoginMethod(null);
+      }
       return;
     }
 
     const connector = connectors.find((c) => c.id === 'injected') ?? connectors[0];
-    if (!connector) return;
+    if (!connector) {
+      setSocialHint('利用可能なウォレットコネクタが見つかりません。');
+      return;
+    }
 
     setPendingWalletSignIn(true);
     setLoginMethod('wallet');
     try {
       await connectAsync({ connector });
-    } catch {
+    } catch (error: unknown) {
       setPendingWalletSignIn(false);
       setLoginMethod(null);
+      const message = error instanceof Error ? error.message : 'ウォレット接続に失敗しました。';
+      setSocialHint(message);
     }
   }, [connectAsync, connectors, isAuthenticated, onCloseModal, setLoginMethod, signIn, wagmiAddress]);
 
   const handleSocialLogin = useCallback(async () => {
     setSocialHint(null);
+    setPendingWalletSignIn(false);
     setSocialSigning(true);
     try {
       const social = await Web3AuthService.connectSocial();
       setWalletAddress(social.address);
       setLoginMethod('social');
-      await signInWithCustomSigner({
+      setIsAuthenticating(true);
+      const ok = await signInWithCustomSigner({
         walletAddress: social.address,
         chainId: CHAIN_CONFIG.id,
         signMessage: social.signMessage,
       });
+      if (!ok) {
+        setLoginMethod(null);
+        setWalletAddress(wagmiAddress ?? walletAddress ?? null);
+        setSocialHint('署名または認証に失敗しました。もう一度お試しください。');
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'ソーシャルログインに失敗しました。';
       setSocialHint(message);
       setLoginMethod(null);
+      setWalletAddress(wagmiAddress ?? walletAddress ?? null);
     } finally {
       setSocialSigning(false);
+      setIsAuthenticating(false);
     }
-  }, [setWalletAddress, setLoginMethod, signInWithCustomSigner]);
+  }, [setWalletAddress, setLoginMethod, signInWithCustomSigner, wagmiAddress, walletAddress]);
 
   const handleLogout = useCallback(async () => {
     signOut();
     disconnect();
     await Web3AuthService.logout().catch(() => {});
+    setPendingWalletSignIn(false);
+    setSocialSigning(false);
+    setIsAuthenticating(false);
     setSocialHint(null);
     onCloseModal();
-  }, [disconnect, onCloseModal, signOut]);
+    if (isProtectedPath(pathname)) {
+      router.replace('/');
+      return;
+    }
+    router.refresh();
+  }, [disconnect, isProtectedPath, onCloseModal, pathname, router, signOut]);
 
   const walletActionLabel = useMemo(() => {
     if (connecting || pendingWalletSignIn) return 'ウォレット接続中...';
-    if (signing) return '署名中...';
+    if (signing || isAuthenticating || socialSigning) return '認証中...';
     if (isAuthenticated && loginMethod === 'social') return 'ソーシャル認証済み';
     if (isAuthenticated && loginMethod === 'wallet') return 'ウォレット認証済み';
     if (isAuthenticated) return '認証済み';
-    if (!walletAddress) return 'ウォレットを接続してログイン';
+    if (!wagmiAddress) return 'ウォレットを接続してログイン';
     return 'ウォレット署名でログイン';
-  }, [connecting, isAuthenticated, loginMethod, pendingWalletSignIn, signing, walletAddress]);
+  }, [connecting, isAuthenticated, isAuthenticating, loginMethod, pendingWalletSignIn, signing, socialSigning, wagmiAddress]);
 
   return {
     socialHint,
     pendingWalletSignIn,
     socialSigning,
+    isAuthenticating,
     connecting,
     signing,
     authError,

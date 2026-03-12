@@ -13,10 +13,21 @@ import { useUserStore } from '../stores/user.store';
 export function useWalletSync() {
   const { address, isConnected } = useAccount();
   const setWalletAddress = useUserStore((s) => s.setWalletAddress);
+  const loginMethod = useUserStore((s) => s.loginMethod);
   const prevWagmiAddressRef = useRef<`0x${string}` | null>(null);
 
   useEffect(() => {
     const currentStoreAddress = useUserStore.getState().walletAddress;
+
+    // ソーシャルログイン中は Web3Auth のアドレスを優先し、wagmi の同期で上書きしない。
+    if (loginMethod === 'social') {
+      if (isConnected && address) {
+        prevWagmiAddressRef.current = address;
+      } else if (!isConnected) {
+        prevWagmiAddressRef.current = null;
+      }
+      return;
+    }
 
     if (isConnected && address) {
       prevWagmiAddressRef.current = address;
@@ -35,5 +46,5 @@ export function useWalletSync() {
     if (!isConnected) {
       prevWagmiAddressRef.current = null;
     }
-  }, [address, isConnected, setWalletAddress]);
+  }, [address, isConnected, loginMethod, setWalletAddress]);
 }
