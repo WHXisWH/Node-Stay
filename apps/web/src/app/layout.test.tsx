@@ -6,6 +6,11 @@ import RootLayout from './layout';
 // next/navigation をモック化（Header が usePathname を使用するため）
 vi.mock('next/navigation', () => ({
   usePathname: () => '/',
+  useRouter: () => ({
+    replace: vi.fn(),
+    push: vi.fn(),
+    prefetch: vi.fn(),
+  }),
 }));
 
 // next/link をモック化

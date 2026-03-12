@@ -36,6 +36,11 @@ const STATUS_CONFIG: Record<
     className: 'badge-gray',
     dotColor: 'bg-slate-300',
   },
+  LISTED: {
+    label: '出品中',
+    className: 'bg-purple-100 text-purple-700 badge',
+    dotColor: 'bg-purple-400',
+  },
   PENDING: {
     label: '処理中',
     className: 'badge-yellow',

@@ -21,3 +21,4 @@ coverage/
 
 # IDE artifacts
 .cursor/
+.claude/

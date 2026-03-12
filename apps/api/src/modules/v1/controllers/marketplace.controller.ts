@@ -1,16 +1,17 @@
-import { Body, Controller, Delete, Get, HttpException, HttpStatus, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpException, HttpStatus, Param, Post, Query } from '@nestjs/common';
+import { normalizeIdempotencyKey } from '@nodestay/domain';
 import { z } from 'zod';
+import { IdempotencyService } from '../services/idempotency.service';
 import { ListingService } from '../services/listing.service';
+import { CurrentUser, type AuthenticatedUser } from '../decorators/current-user.decorator';
 import { Public } from '../decorators/public.decorator';
-import { CurrentUser, AuthenticatedUser } from '../decorators/current-user.decorator';
-import { UserService } from '../services/user.service';
 
 // -----------------------------------------------------------------------
 // 出品作成リクエストのバリデーションスキーマ
 // -----------------------------------------------------------------------
 const CreateListingBody = z.object({
   usageRightId: z.string().min(1),
-  sellerUserId: z.string().min(1),
+  sellerUserId: z.string().optional(),
   priceJpyc:    z.string().min(1),
   expiryAt:     z.string().datetime().optional(),
 });
@@ -19,14 +20,14 @@ const CreateListingBody = z.object({
 // 出品キャンセルリクエストのバリデーションスキーマ
 // -----------------------------------------------------------------------
 const CancelListingBody = z.object({
-  userId: z.string().min(1),
+  userId: z.string().optional(),
 });
 
 // -----------------------------------------------------------------------
 // 購入リクエストのバリデーションスキーマ
 // -----------------------------------------------------------------------
 const BuyListingBody = z.object({
-  buyerUserId: z.string().min(1),
+  buyerUserId: z.string().optional(),
 });
 
 // -----------------------------------------------------------------------
@@ -37,7 +38,7 @@ const BuyListingBody = z.object({
 export class MarketplaceController {
   constructor(
     private readonly listing: ListingService,
-    private readonly userService: UserService,
+    private readonly idempotency: IdempotencyService,
   ) {}
 
   // -----------------------------------------------------------------------
@@ -70,59 +71,142 @@ export class MarketplaceController {
   }
 
   // -----------------------------------------------------------------------
-  // POST /v1/marketplace/listings — 利用権を出品する（認証必須）
+  // POST /v1/marketplace/listings — 利用権を出品する（Idempotency-Key 必須）
   // -----------------------------------------------------------------------
   @Post('/listings')
-  async createListing(@Body() body: unknown, @CurrentUser() user: AuthenticatedUser) {
+  async createListing(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: unknown,
+    @Headers('idempotency-key') rawKey: string | undefined,
+  ) {
     const parsed = CreateListingBody.safeParse(body);
     if (!parsed.success) {
       throw new HttpException({ message: '入力が不正です' }, HttpStatus.BAD_REQUEST);
     }
+    if (!rawKey) {
+      throw new HttpException({ message: 'Idempotency-Key が必要です' }, HttpStatus.BAD_REQUEST);
+    }
 
-    // ウォレットアドレスから userId を解決
-    const sellerUserId = parsed.data.sellerUserId || await this.userService.findOrCreateByWallet(user.address);
+    let key: ReturnType<typeof normalizeIdempotencyKey>;
+    try {
+      key = normalizeIdempotencyKey(rawKey);
+    } catch {
+      throw new HttpException({ message: 'Idempotency-Key が不正です' }, HttpStatus.BAD_REQUEST);
+    }
 
-    return this.listing.createListing({
+    const requestHash = this.idempotency.hashRequest({
+      operation: 'create-listing',
+      actor: user.address,
+      body: parsed.data,
+    });
+    const existing = await this.idempotency.get(key);
+    if (existing) {
+      if (existing.requestHash !== requestHash) {
+        throw new HttpException({ message: '同一キーで内容が異なります' }, HttpStatus.CONFLICT);
+      }
+      return existing.response;
+    }
+
+    const result = await this.listing.createListing({
       usageRightId: parsed.data.usageRightId,
-      sellerUserId,
+      // 認証済みウォレットを信頼し、body 側 sellerUserId は使用しない
+      sellerUserId: user.address,
       priceJpyc:    parsed.data.priceJpyc,
       expiryAt:     parsed.data.expiryAt ? new Date(parsed.data.expiryAt) : undefined,
     });
+    await this.idempotency.save(key, requestHash, result);
+    return result;
   }
 
   // -----------------------------------------------------------------------
-  // DELETE /v1/marketplace/listings/:id — 出品をキャンセルする（認証必須）
+  // DELETE /v1/marketplace/listings/:id — 出品をキャンセルする
   // -----------------------------------------------------------------------
   @Delete('/listings/:id')
   async cancelListing(
+    @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body() body: unknown,
-    @CurrentUser() user: AuthenticatedUser,
+    @Headers('idempotency-key') rawKey: string | undefined,
   ) {
-    const parsed = CancelListingBody.safeParse(body);
-    // userId が指定されていなければウォレットから解決
-    const userId = parsed.success && parsed.data.userId
-      ? parsed.data.userId
-      : await this.userService.findOrCreateByWallet(user.address);
+    const parsed = CancelListingBody.safeParse(body ?? {});
+    if (!parsed.success) {
+      throw new HttpException({ message: '入力が不正です' }, HttpStatus.BAD_REQUEST);
+    }
 
-    return this.listing.cancelListing(id, userId);
+    if (!rawKey) {
+      throw new HttpException({ message: 'Idempotency-Key が必要です' }, HttpStatus.BAD_REQUEST);
+    }
+
+    let key: ReturnType<typeof normalizeIdempotencyKey>;
+    try {
+      key = normalizeIdempotencyKey(rawKey);
+    } catch {
+      throw new HttpException({ message: 'Idempotency-Key が不正です' }, HttpStatus.BAD_REQUEST);
+    }
+
+    const requestHash = this.idempotency.hashRequest({
+      operation: 'cancel-listing',
+      listingId: id,
+      actor: user.address,
+      body: parsed.data,
+    });
+    const existing = await this.idempotency.get(key);
+    if (existing) {
+      if (existing.requestHash !== requestHash) {
+        throw new HttpException({ message: '同一キーで内容が異なります' }, HttpStatus.CONFLICT);
+      }
+      return existing.response;
+    }
+
+    // 認証済みウォレットを信頼し、body 側 userId は使用しない
+    const result = await this.listing.cancelListing(id, user.address);
+    await this.idempotency.save(key, requestHash, result);
+    return result;
   }
 
   // -----------------------------------------------------------------------
-  // POST /v1/marketplace/listings/:id/buy — 出品を購入する（認証必須）
+  // POST /v1/marketplace/listings/:id/buy — 出品を購入する
   // -----------------------------------------------------------------------
   @Post('/listings/:id/buy')
   async buyListing(
+    @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body() body: unknown,
-    @CurrentUser() user: AuthenticatedUser,
+    @Headers('idempotency-key') rawKey: string | undefined,
   ) {
-    const parsed = BuyListingBody.safeParse(body);
-    // buyerUserId が指定されていなければウォレットから解決
-    const buyerUserId = parsed.success && parsed.data.buyerUserId
-      ? parsed.data.buyerUserId
-      : await this.userService.findOrCreateByWallet(user.address);
+    const parsed = BuyListingBody.safeParse(body ?? {});
+    if (!parsed.success) {
+      throw new HttpException({ message: '入力が不正です' }, HttpStatus.BAD_REQUEST);
+    }
 
-    return this.listing.buyListing(id, buyerUserId);
+    if (!rawKey) {
+      throw new HttpException({ message: 'Idempotency-Key が必要です' }, HttpStatus.BAD_REQUEST);
+    }
+
+    let key: ReturnType<typeof normalizeIdempotencyKey>;
+    try {
+      key = normalizeIdempotencyKey(rawKey);
+    } catch {
+      throw new HttpException({ message: 'Idempotency-Key が不正です' }, HttpStatus.BAD_REQUEST);
+    }
+
+    const requestHash = this.idempotency.hashRequest({
+      operation: 'buy-listing',
+      listingId: id,
+      actor: user.address,
+      body: parsed.data,
+    });
+    const existing = await this.idempotency.get(key);
+    if (existing) {
+      if (existing.requestHash !== requestHash) {
+        throw new HttpException({ message: '同一キーで内容が異なります' }, HttpStatus.CONFLICT);
+      }
+      return existing.response;
+    }
+
+    // 認証済みウォレットを信頼し、body 側 buyerUserId は使用しない
+    const result = await this.listing.buyListing(id, user.address);
+    await this.idempotency.save(key, requestHash, result);
+    return result;
   }
 }

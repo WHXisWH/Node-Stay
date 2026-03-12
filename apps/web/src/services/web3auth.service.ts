@@ -8,6 +8,7 @@ type Web3AuthSdk = typeof import('@web3auth/modal');
 type Web3AuthInstance = import('@web3auth/modal').Web3Auth;
 type Web3AuthProvider = import('@web3auth/modal').IProvider;
 let web3AuthPromise: Promise<Web3AuthInstance> | null = null;
+let connectedProvider: Web3AuthProvider | null = null;
 
 function resolveWeb3AuthNetwork(sdk: Web3AuthSdk): import('@web3auth/modal').WEB3AUTH_NETWORK_TYPE {
   const candidates = Object.values(sdk.WEB3AUTH_NETWORK) as string[];
@@ -84,13 +85,19 @@ async function getWalletClient(provider: Web3AuthProvider) {
   });
 }
 
-export const Web3AuthService = {
+/**
+ * Web3AuthService
+ * ソーシャルログイン経由のウォレット接続を提供。
+ * AA 機能では getConnectedProvider() で provider を再利用する。
+ */
+class Web3AuthServiceClass {
   async connectSocial(): Promise<{ address: `0x${string}`; signMessage: (message: string) => Promise<string> }> {
     const web3auth = await getWeb3Auth();
     const provider = await web3auth.connect();
     if (!provider) {
       throw new Error('ソーシャルログインがキャンセルされました。');
     }
+    connectedProvider = provider;
 
     const walletClient = await getWalletClient(provider);
     const addresses = await walletClient.getAddresses();
@@ -105,11 +112,22 @@ export const Web3AuthService = {
         return walletClient.signMessage({ account: address, message });
       },
     };
-  },
+  }
 
   async logout(): Promise<void> {
     if (!web3AuthPromise) return;
     const web3auth = await web3AuthPromise;
     await web3auth.logout({ cleanup: true });
-  },
-};
+    connectedProvider = null;
+  }
+
+  /**
+   * 接続済みの Web3Auth provider を取得する。
+   * AA UserOperation 送信時に使用。
+   */
+  getConnectedProvider(): Web3AuthProvider | null {
+    return connectedProvider;
+  }
+}
+
+export const Web3AuthService = new Web3AuthServiceClass();

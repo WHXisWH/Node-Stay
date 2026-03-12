@@ -3,19 +3,21 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/modules/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { createTestToken, authHeader } from './helpers/auth.helper';
 
 describe('Machine API', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let venueId: string;
+  let token: string;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
     await app.init();
     prisma = app.get(PrismaService);
+    token = createTestToken();
 
-    // テスト用 venue を取得（シードデータ利用）
     const venue = await prisma.venue.findFirst();
     if (!venue) throw new Error('シード venue が存在しません');
     venueId = venue.id;
@@ -26,12 +28,20 @@ describe('Machine API', () => {
   });
 
   // -----------------------------------------------------------------------
-  // Machine 登録
+  // Machine 登録 (Authenticated)
   // -----------------------------------------------------------------------
+
+  it('POST /v1/machines — 401 without token', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/v1/machines')
+      .send({ venueId, machineClass: 'GPU' });
+    expect(res.status).toBe(401);
+  });
 
   it('POST /v1/machines — GPU機器を登録できる', async () => {
     const res = await request(app.getHttpServer())
       .post('/v1/machines')
+      .set(...authHeader(token))
       .send({
         venueId,
         machineClass: 'GPU',
@@ -50,6 +60,7 @@ describe('Machine API', () => {
   it('POST /v1/machines — body 不正は 400', async () => {
     const res = await request(app.getHttpServer())
       .post('/v1/machines')
+      .set(...authHeader(token))
       .send({ venueId, machineClass: 'INVALID_CLASS' });
     expect(res.status).toBe(400);
   });
@@ -65,12 +76,14 @@ describe('Machine API', () => {
 
     const first = await request(app.getHttpServer())
       .post('/v1/machines')
+      .set(...authHeader(token))
       .set('Idempotency-Key', key)
       .send(payload);
     expect(first.status).toBe(201);
 
     const second = await request(app.getHttpServer())
       .post('/v1/machines')
+      .set(...authHeader(token))
       .set('Idempotency-Key', key)
       .send(payload);
     expect(second.status).toBe(201);
@@ -78,19 +91,20 @@ describe('Machine API', () => {
 
     const conflict = await request(app.getHttpServer())
       .post('/v1/machines')
+      .set(...authHeader(token))
       .set('Idempotency-Key', key)
       .send({ ...payload, cpu: 'Xeon' });
     expect(conflict.status).toBe(409);
   });
 
   // -----------------------------------------------------------------------
-  // Machine 一覧・詳細
+  // Machine 一覧・詳細 (Public)
   // -----------------------------------------------------------------------
 
   it('GET /v1/machines — 一覧取得（venueId フィルタ）', async () => {
-    // 先に 1 台登録
     await request(app.getHttpServer())
       .post('/v1/machines')
+      .set(...authHeader(token))
       .send({ venueId, machineClass: 'CPU', cpu: 'i9-14900K', localSerial: `CPU-${Date.now()}` });
 
     const res = await request(app.getHttpServer())
@@ -104,6 +118,7 @@ describe('Machine API', () => {
   it('GET /v1/machines/:id — 詳細取得', async () => {
     const reg = await request(app.getHttpServer())
       .post('/v1/machines')
+      .set(...authHeader(token))
       .send({ venueId, machineClass: 'STANDARD', localSerial: `STD-${Date.now()}` });
     const id = reg.body.machineId;
 
@@ -118,17 +133,32 @@ describe('Machine API', () => {
   });
 
   // -----------------------------------------------------------------------
-  // ステータス更新
+  // ステータス更新 (Authenticated)
   // -----------------------------------------------------------------------
+
+  it('PATCH /v1/machines/:id/status — 401 without token', async () => {
+    const reg = await request(app.getHttpServer())
+      .post('/v1/machines')
+      .set(...authHeader(token))
+      .send({ venueId, machineClass: 'GPU', localSerial: `GPU-NOAUTH-${Date.now()}` });
+    const id = reg.body.machineId;
+
+    const res = await request(app.getHttpServer())
+      .patch(`/v1/machines/${id}/status`)
+      .send({ status: 'ACTIVE' });
+    expect(res.status).toBe(401);
+  });
 
   it('PATCH /v1/machines/:id/status — REGISTERED → ACTIVE', async () => {
     const reg = await request(app.getHttpServer())
       .post('/v1/machines')
+      .set(...authHeader(token))
       .send({ venueId, machineClass: 'GPU', localSerial: `GPU-PATCH-${Date.now()}` });
     const id = reg.body.machineId;
 
     const res = await request(app.getHttpServer())
       .patch(`/v1/machines/${id}/status`)
+      .set(...authHeader(token))
       .send({ status: 'ACTIVE' });
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('ACTIVE');
@@ -137,22 +167,25 @@ describe('Machine API', () => {
   it('PATCH /v1/machines/:id/status — 不正ステータスは 400', async () => {
     const reg = await request(app.getHttpServer())
       .post('/v1/machines')
+      .set(...authHeader(token))
       .send({ venueId, machineClass: 'GPU', localSerial: `GPU-BAD-${Date.now()}` });
     const id = reg.body.machineId;
 
     const res = await request(app.getHttpServer())
       .patch(`/v1/machines/${id}/status`)
+      .set(...authHeader(token))
       .send({ status: 'UNKNOWN' });
     expect(res.status).toBe(400);
   });
 
   // -----------------------------------------------------------------------
-  // MachineSlot（時間スロット）
+  // MachineSlot（時間スロット）(Public)
   // -----------------------------------------------------------------------
 
   it('GET /v1/machines/:id/slots — スロット一覧（初期は空）', async () => {
     const reg = await request(app.getHttpServer())
       .post('/v1/machines')
+      .set(...authHeader(token))
       .send({ venueId, machineClass: 'GPU', localSerial: `SLOT-${Date.now()}` });
     const id = reg.body.machineId;
 
@@ -165,6 +198,7 @@ describe('Machine API', () => {
   it('GET /v1/machines/:id/slots — 日時不正は 400', async () => {
     const reg = await request(app.getHttpServer())
       .post('/v1/machines')
+      .set(...authHeader(token))
       .send({ venueId, machineClass: 'GPU', localSerial: `SLOT2-${Date.now()}` });
     const id = reg.body.machineId;
 
@@ -174,35 +208,46 @@ describe('Machine API', () => {
   });
 
   // -----------------------------------------------------------------------
-  // 利用権 GET / cancel
+  // 利用権 GET / cancel (Authenticated for writes)
   // -----------------------------------------------------------------------
 
-  it('GET /v1/usage-rights?ownerUserId= — ownerUserId 未指定は 400', async () => {
+  it('GET /v1/usage-rights — uses JWT address (not 401)', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/v1/usage-rights')
+      .set(...authHeader(token));
+    // 200 if user exists, 404 if wallet has no matching user — both mean auth passed
+    expect(res.status).not.toBe(401);
+  });
+
+  it('GET /v1/usage-rights — 401 without token', async () => {
     const res = await request(app.getHttpServer()).get('/v1/usage-rights');
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(401);
   });
 
   it('GET /v1/usage-rights/:id — 詳細取得', async () => {
-    // 購入して取得
-    const venue = await prisma.venue.findFirst({ include: { machines: false } });
+    const venue = await prisma.venue.findFirst();
     const product = await prisma.usageProduct.findFirst({ where: { venueId: venue!.id } });
     if (!product) return;
 
     const purchase = await request(app.getHttpServer())
       .post('/v1/usage-rights/purchase')
+      .set(...authHeader(token))
       .set('Idempotency-Key', `get-detail-${Date.now()}`)
       .send({ productId: product.id });
     expect(purchase.status).toBe(201);
 
     const res = await request(app.getHttpServer())
-      .get(`/v1/usage-rights/${purchase.body.usageRightId}`);
+      .get(`/v1/usage-rights/${purchase.body.usageRightId}`)
+      .set(...authHeader(token));
     expect(res.status).toBe(200);
     expect(res.body.id).toBe(purchase.body.usageRightId);
     expect(res.body.usageProduct).toBeDefined();
   });
 
   it('GET /v1/usage-rights/:id — 存在しない ID は 404', async () => {
-    const res = await request(app.getHttpServer()).get('/v1/usage-rights/nonexistent');
+    const res = await request(app.getHttpServer())
+      .get('/v1/usage-rights/nonexistent')
+      .set(...authHeader(token));
     expect(res.status).toBe(404);
   });
 
@@ -212,19 +257,21 @@ describe('Machine API', () => {
 
     const purchase = await request(app.getHttpServer())
       .post('/v1/usage-rights/purchase')
+      .set(...authHeader(token))
       .set('Idempotency-Key', `cancel-${Date.now()}`)
       .send({ productId: product.id });
     expect(purchase.status).toBe(201);
 
     const cancel = await request(app.getHttpServer())
-      .post(`/v1/usage-rights/${purchase.body.usageRightId}/cancel`);
+      .post(`/v1/usage-rights/${purchase.body.usageRightId}/cancel`)
+      .set(...authHeader(token));
     expect(cancel.status).toBe(201);
     expect(cancel.body.status).toBe('CANCELLED');
   });
 
-  it('POST /v1/usage-rights/:id/cancel — 存在しない ID は 422', async () => {
+  it('POST /v1/usage-rights/:id/cancel — 401 without token', async () => {
     const res = await request(app.getHttpServer())
       .post('/v1/usage-rights/nonexistent/cancel');
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(401);
   });
 });

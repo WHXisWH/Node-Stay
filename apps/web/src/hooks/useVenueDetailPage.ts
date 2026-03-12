@@ -1,7 +1,7 @@
 /**
  * useVenueDetailPage: 店舗詳細 Controller（SPEC §8）。
- * venue.store を読み取り専用で扱い、VenueService / PassService を呼び出す。
- * View は本 Hook の戻り値のみを表示する。
+ * venue.store は読み取り専用で扱い、VenueService / UsageRightService を呼び出す。
+ * View は本 Hook の戻り値のみで描画する。
  */
 
 import { useEffect, useState } from 'react';
@@ -10,7 +10,7 @@ import { useUserStore } from '../models/stores/user.store';
 import { useVenueStore } from '../stores/venue.store';
 import { VenueService } from '../services/venue.service';
 import { CONTRACT_ADDRESSES } from '../services/config';
-import { PassService } from '../services/pass.service';
+import { UsageRightService } from '../services/usageRight.service';
 import { useJPYCApprove } from './useJPYC';
 import type { VenueListItem, PlanListItem } from '../models/venue.model';
 
@@ -27,6 +27,8 @@ export interface UseVenueDetailPageReturn {
   purchaseError: string | null;
   needsWalletApproval: boolean;
   purchaseSuccess: boolean;
+  mintStatus: 'idle' | 'pending' | 'confirmed' | 'timeout';
+  mintedTokenId: string | null;
   handlePurchase: () => Promise<void>;
 }
 
@@ -43,6 +45,8 @@ export function useVenueDetailPage(venueId: string | undefined): UseVenueDetailP
   const [approving, setApproving] = useState(false);
   const [purchaseSuccess, setPurchaseSuccess] = useState(false);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
+  const [mintStatus, setMintStatus] = useState<'idle' | 'pending' | 'confirmed' | 'timeout'>('idle');
+  const [mintedTokenId, setMintedTokenId] = useState<string | null>(null);
   const { approve } = useJPYCApprove();
 
   const settlementAddress = CONTRACT_ADDRESSES.settlement;
@@ -56,6 +60,8 @@ export function useVenueDetailPage(venueId: string | undefined): UseVenueDetailP
     if (!selectedPlan || !venueId) return;
     setPurchaseError(null);
     setPurchaseSuccess(false);
+    setMintStatus('idle');
+    setMintedTokenId(null);
     setPurchasing(true);
     try {
       if (needsWalletApproval) {
@@ -65,12 +71,31 @@ export function useVenueDetailPage(venueId: string | undefined): UseVenueDetailP
         await approve(settlementAddress as `0x${string}`, totalJPYC);
       }
 
-      await PassService.purchase(
-        { productId: selectedPlan.productId },
+      const purchaseResult = await UsageRightService.purchase(
+        {
+          productId: selectedPlan.productId,
+          ownerUserId: walletAddress ?? undefined,
+          buyerWallet: walletAddress ?? undefined,
+        },
         `purchase-${selectedPlan.productId}-${Date.now()}`
       );
       setPurchaseSuccess(true);
       setSelectedPlan(null);
+      setMintStatus('pending');
+
+      void (async () => {
+        try {
+          const tokenId = await UsageRightService.waitForOnchainToken(purchaseResult.usageRightId);
+          if (tokenId) {
+            setMintedTokenId(tokenId);
+            setMintStatus('confirmed');
+          } else {
+            setMintStatus('timeout');
+          }
+        } catch {
+          setMintStatus('timeout');
+        }
+      })();
     } catch (e) {
       const msg = e instanceof Error ? e.message : '購入処理に失敗しました';
       setPurchaseError(msg);
@@ -93,6 +118,8 @@ export function useVenueDetailPage(venueId: string | undefined): UseVenueDetailP
     purchaseError,
     needsWalletApproval,
     purchaseSuccess,
+    mintStatus,
+    mintedTokenId,
     handlePurchase,
   };
 }

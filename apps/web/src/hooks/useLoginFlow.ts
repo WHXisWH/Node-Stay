@@ -39,6 +39,7 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
   const [pendingWalletSignIn, setPendingWalletSignIn] = useState(false);
   const [socialSigning, setSocialSigning] = useState(false);
   const setWalletAddress = useUserStore((s) => s.setWalletAddress);
+  const setLoginMethod = useUserStore((s) => s.setLoginMethod);
   const router = useRouter();
 
   const { address: wagmiAddress } = useAccount();
@@ -76,6 +77,7 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
     }
 
     if (wagmiAddress) {
+      setLoginMethod('wallet');
       await signIn();
       return;
     }
@@ -84,12 +86,14 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
     if (!connector) return;
 
     setPendingWalletSignIn(true);
+    setLoginMethod('wallet');
     try {
       await connectAsync({ connector });
     } catch {
       setPendingWalletSignIn(false);
+      setLoginMethod(null);
     }
-  }, [connectAsync, connectors, isAuthenticated, onCloseModal, signIn, wagmiAddress]);
+  }, [connectAsync, connectors, isAuthenticated, onCloseModal, setLoginMethod, signIn, wagmiAddress]);
 
   const handleSocialLogin = useCallback(async () => {
     setSocialHint(null);
@@ -97,6 +101,7 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
     try {
       const social = await Web3AuthService.connectSocial();
       setWalletAddress(social.address);
+      setLoginMethod('social');
       await signInWithCustomSigner({
         walletAddress: social.address,
         chainId: CHAIN_CONFIG.id,
@@ -105,10 +110,11 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'ソーシャルログインに失敗しました。';
       setSocialHint(message);
+      setLoginMethod(null);
     } finally {
       setSocialSigning(false);
     }
-  }, [setWalletAddress, signInWithCustomSigner]);
+  }, [setWalletAddress, setLoginMethod, signInWithCustomSigner]);
 
   const handleLogout = useCallback(async () => {
     signOut();

@@ -8,6 +8,9 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Balance } from '../user.model';
 
+/** ログイン方法：ソーシャル（AA 対応）または通常ウォレット */
+export type LoginMethod = 'social' | 'wallet' | null;
+
 export interface UserState {
   /** 接続中のウォレットアドレス（未接続時は null） */
   walletAddress: `0x${string}` | null;
@@ -15,6 +18,8 @@ export interface UserState {
   jwt: string | null;
   /** SIWE 認証済みかどうか */
   isAuthenticated: boolean;
+  /** ログイン方法（AA 判定に使用） */
+  loginMethod: LoginMethod;
   balance: Balance | null;
   loading: boolean;
   error: string | null;
@@ -25,6 +30,8 @@ export interface UserState {
 export interface UserActions {
   setWalletAddress: (address: `0x${string}` | null) => void;
   setJwt: (jwt: string | null) => void;
+  /** ログイン方法を設定する（social = AA 対応、wallet = 通常ウォレット） */
+  setLoginMethod: (method: LoginMethod) => void;
   signOut: () => void;
   setBalance: (balance: Balance | null) => void;
   setLoading: (loading: boolean) => void;
@@ -38,6 +45,7 @@ const initialState: UserState = {
   walletAddress:   null,
   jwt:             null,
   isAuthenticated: false,
+  loginMethod:     null,
   balance:         null,
   loading:         false,
   error:           null,
@@ -50,7 +58,8 @@ export const useUserStore = create<UserState & UserActions>()(
       ...initialState,
       setWalletAddress: (walletAddress) => set({ walletAddress }),
       setJwt: (jwt) => set({ jwt, isAuthenticated: jwt !== null }),
-      signOut: () => set({ jwt: null, isAuthenticated: false, walletAddress: null, balance: null, activeSessionId: null }),
+      setLoginMethod: (loginMethod) => set({ loginMethod }),
+      signOut: () => set({ jwt: null, isAuthenticated: false, walletAddress: null, loginMethod: null, balance: null, activeSessionId: null }),
       setBalance: (balance) => set({ balance, error: null }),
       setLoading: (loading) => set({ loading }),
       setError: (error) => set({ error, loading: false }),
@@ -59,8 +68,8 @@ export const useUserStore = create<UserState & UserActions>()(
     }),
     {
       name:    'nodestay-user',
-      // jwt / walletAddress / activeSessionId を LocalStorage に永続化（残高は毎回再取得）
-      partialize: (s) => ({ jwt: s.jwt, isAuthenticated: s.isAuthenticated, walletAddress: s.walletAddress, activeSessionId: s.activeSessionId }),
+      // jwt / walletAddress / activeSessionId / loginMethod を LocalStorage に永続化（残高は毎回再取得）
+      partialize: (s) => ({ jwt: s.jwt, isAuthenticated: s.isAuthenticated, walletAddress: s.walletAddress, loginMethod: s.loginMethod, activeSessionId: s.activeSessionId }),
     },
   ),
 );

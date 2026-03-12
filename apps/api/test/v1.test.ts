@@ -2,14 +2,17 @@ import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/modules/app.module';
+import { createTestToken, authHeader } from './helpers/auth.helper';
 
 describe('API v1 surface', () => {
   let app: INestApplication;
+  let token: string;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
     await app.init();
+    token = createTestToken();
   }, 30000);
 
   afterAll(async () => {
@@ -17,7 +20,7 @@ describe('API v1 surface', () => {
   });
 
   // -----------------------------------------------------------------------
-  // 店舗・商品 エンドポイント
+  // 店舗・商品 エンドポイント (Public)
   // -----------------------------------------------------------------------
 
   it('GET /v1/venues → 配列を返す', async () => {
@@ -33,7 +36,7 @@ describe('API v1 surface', () => {
   });
 
   // -----------------------------------------------------------------------
-  // 本人確認
+  // 本人確認 (Public)
   // -----------------------------------------------------------------------
 
   it('POST /v1/identity/verify — body バリデーション', async () => {
@@ -53,13 +56,12 @@ describe('API v1 surface', () => {
   });
 
   // -----------------------------------------------------------------------
-  // 利用権購入 → チェックイン → チェックアウト フロー
+  // 利用権購入 → チェックイン → チェックアウト フロー (Authenticated)
   // -----------------------------------------------------------------------
 
   it('利用権購入→チェックイン→チェックアウト', async () => {
     const server = app.getHttpServer();
 
-    // シードデータから商品を取得
     const venues = await request(server).get('/v1/venues');
     expect(venues.body.length).toBeGreaterThan(0);
 
@@ -68,76 +70,84 @@ describe('API v1 surface', () => {
     expect(products.body.length).toBeGreaterThan(0);
     const productId = products.body[0].id;
 
-    // 購入
     const purchase = await request(server)
       .post('/v1/usage-rights/purchase')
+      .set(...authHeader(token))
       .set('Idempotency-Key', `flow-${Date.now()}`)
       .send({ productId });
     expect(purchase.status).toBe(201);
     const usageRightId = purchase.body.usageRightId;
     expect(usageRightId).toBeDefined();
 
-    // チェックイン
     const checkin = await request(server)
       .post('/v1/sessions/checkin')
+      .set(...authHeader(token))
       .send({ usageRightId, venueId });
     expect(checkin.status).toBe(201);
     expect(checkin.body.sessionId).toBeDefined();
 
-    // チェックアウト
     const ikey = `checkout-${Date.now()}`;
     const checkout = await request(server)
       .post('/v1/sessions/checkout')
+      .set(...authHeader(token))
       .set('Idempotency-Key', ikey)
       .send({ sessionId: checkin.body.sessionId });
     expect(checkout.status).toBe(201);
     expect(checkout.body.usedMinutes).toBeGreaterThanOrEqual(0);
 
-    // 同一キーで再チェックアウト → 同一レスポンス（冪等）
     const checkout2 = await request(server)
       .post('/v1/sessions/checkout')
+      .set(...authHeader(token))
       .set('Idempotency-Key', ikey)
       .send({ sessionId: checkin.body.sessionId });
     expect(checkout2.status).toBe(201);
     expect(checkout2.body).toEqual(checkout.body);
 
-    // 同一キー・異なるセッション → 409
     const conflict = await request(server)
       .post('/v1/sessions/checkout')
+      .set(...authHeader(token))
       .set('Idempotency-Key', ikey)
       .send({ sessionId: 'other-session' });
     expect(conflict.status).toBe(409);
   });
 
   // -----------------------------------------------------------------------
-  // ユーザー残高
+  // ユーザー残高 (Authenticated)
   // -----------------------------------------------------------------------
 
-  it('GET /v1/user/balance', async () => {
-    const res = await request(app.getHttpServer()).get('/v1/user/balance');
+  it('GET /v1/user/balance (with auth)', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/v1/user/balance')
+      .set(...authHeader(token));
     expect(res.status).toBe(200);
     expect(res.body.currency).toBe('JPYC');
   });
 
+  it('GET /v1/user/balance (without auth → 401)', async () => {
+    const res = await request(app.getHttpServer()).get('/v1/user/balance');
+    expect(res.status).toBe(401);
+  });
+
   // -----------------------------------------------------------------------
-  // マーチャント管理
+  // マーチャント管理 (Authenticated)
   // -----------------------------------------------------------------------
 
   it('merchant: 店舗作成 → 商品登録', async () => {
     const { PrismaService } = await import('../src/prisma/prisma.service');
-    // マーチャントを先に作成
     const merchant = await app
       .get(PrismaService)
       .merchant.create({ data: { name: 'テスト運営' } });
 
     const venue = await request(app.getHttpServer())
       .post('/v1/merchant/venues')
+      .set(...authHeader(token))
       .send({ merchantId: merchant.id, name: 'テスト新店舗', address: '大阪市' });
     expect(venue.status).toBe(201);
     expect(venue.body.venueId).toBeDefined();
 
     const product = await request(app.getHttpServer())
       .put(`/v1/merchant/venues/${venue.body.venueId}/products`)
+      .set(...authHeader(token))
       .send({ productName: '1時間パック', usageType: 'PACK', durationMinutes: 60, priceJpyc: '500' });
     expect(product.status).toBe(200);
     expect(product.body.productId).toBeDefined();
@@ -146,6 +156,7 @@ describe('API v1 surface', () => {
   it('merchant: dispute 作成', async () => {
     const dispute = await request(app.getHttpServer())
       .post('/v1/merchant/disputes')
+      .set(...authHeader(token))
       .send({ referenceType: 'SESSION', referenceId: 'sess-001' });
     expect(dispute.status).toBe(201);
     expect(dispute.body.disputeId).toBeDefined();
@@ -157,7 +168,6 @@ describe('API v1 surface', () => {
 
   it('compute endpoints: フラグに応じて 200 or 501', async () => {
     const nodes = await request(app.getHttpServer()).get('/v1/compute/nodes');
-    // ENABLE_COMPUTE_MARKET フラグに応じて 200/501 が変わる
     expect([200, 501]).toContain(nodes.status);
   });
 
@@ -168,6 +178,7 @@ describe('API v1 surface', () => {
   it('transfer endpoint returns 501 when disabled', async () => {
     const res = await request(app.getHttpServer())
       .post('/v1/usage-rights/some-id/transfer')
+      .set(...authHeader(token))
       .set('Idempotency-Key', 'transfer01')
       .send({ newOwnerUserId: 'user-002' });
     expect(res.status).toBe(501);

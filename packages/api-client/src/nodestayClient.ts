@@ -428,15 +428,15 @@ export class NodeStayClient {
     return this.json(`/v1/marketplace/listings?${q.toString()}`);
   }
 
-  /** POST /v1/marketplace/listings — 出品作成 */
+  /** POST /v1/marketplace/listings — 出品作成（Idempotency-Key 必須） */
   async createMarketplaceListing(
     input: {
       usageRightId: string;
-      sellerUserId: string;
+      sellerUserId?: string;
       priceJpyc: string;
       expiryAt?: string;
     },
-    idempotencyKey?: string,
+    idempotencyKey: string,
   ): Promise<{
     id: string;
     usageRightId: string;
@@ -448,32 +448,42 @@ export class NodeStayClient {
     onchainListingId: string | null;
     onchainTxHash: string | null;
   }> {
-    const headers: Record<string, string> = { 'content-type': 'application/json' };
-    if (idempotencyKey) {
-      headers['idempotency-key'] = normalizeIdempotencyKey(idempotencyKey);
-    }
     return this.json('/v1/marketplace/listings', {
       method: 'POST',
-      headers,
+      headers: {
+        'content-type': 'application/json',
+        'idempotency-key': normalizeIdempotencyKey(idempotencyKey),
+      },
       body: JSON.stringify(input),
     });
   }
 
-  /** DELETE /v1/marketplace/listings/:id — 出品キャンセル */
-  async cancelMarketplaceListing(listingId: string, userId: string): Promise<{
+  /** DELETE /v1/marketplace/listings/:id — 出品キャンセル（Idempotency-Key 必須） */
+  async cancelMarketplaceListing(
+    listingId: string,
+    userId: string,
+    idempotencyKey: string,
+  ): Promise<{
     id: string;
     status: string;
     usageRightId: string;
   }> {
     return this.json(`/v1/marketplace/listings/${encodeURIComponent(listingId)}`, {
       method: 'DELETE',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'idempotency-key': normalizeIdempotencyKey(idempotencyKey),
+      },
       body: JSON.stringify({ userId }),
     });
   }
 
-  /** POST /v1/marketplace/listings/:id/buy — 出品購入 */
-  async buyMarketplaceListing(listingId: string, buyerUserId: string): Promise<{
+  /** POST /v1/marketplace/listings/:id/buy — 出品購入（Idempotency-Key 必須） */
+  async buyMarketplaceListing(
+    listingId: string,
+    buyerUserId: string,
+    idempotencyKey: string,
+  ): Promise<{
     id: string;
     status: string;
     usageRightId: string;
@@ -481,7 +491,10 @@ export class NodeStayClient {
   }> {
     return this.json(`/v1/marketplace/listings/${encodeURIComponent(listingId)}/buy`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'idempotency-key': normalizeIdempotencyKey(idempotencyKey),
+      },
       body: JSON.stringify({ buyerUserId }),
     });
   }

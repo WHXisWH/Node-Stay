@@ -7,10 +7,11 @@ import { useState } from 'react';
 import { useWriteContract } from 'wagmi';
 import { parseUnits } from 'viem';
 
-// コントラクトアドレス（環境変数 or ハードコード）
-const MARKETPLACE_ADDRESS = (process.env.NEXT_PUBLIC_MARKETPLACE_ADDRESS ?? '0x4f8cf6f0FD4Bb27Ab02453012dF14Efd0E3340e6') as `0x${string}`;
-const USAGE_RIGHT_ADDRESS = (process.env.NEXT_PUBLIC_USAGE_RIGHT_ADDRESS ?? '') as `0x${string}`;
-const JPYC_ADDRESS = (process.env.NEXT_PUBLIC_JPYC_ADDRESS ?? '') as `0x${string}`;
+import { CONTRACT_ADDRESSES } from '../services/config';
+
+const MARKETPLACE_ADDRESS = CONTRACT_ADDRESSES.marketplace as `0x${string}`;
+const USAGE_RIGHT_ADDRESS = CONTRACT_ADDRESSES.usageRight as `0x${string}`;
+const JPYC_ADDRESS = CONTRACT_ADDRESSES.jpycToken as `0x${string}`;
 
 // ERC-721 approve ABI（minimum）
 const ERC721_APPROVE_ABI = [

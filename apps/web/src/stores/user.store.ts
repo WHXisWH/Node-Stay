@@ -5,4 +5,5 @@ export {
   useUserStore,
   type UserState,
   type UserActions,
+  type LoginMethod,
 } from '../models/stores/user.store';

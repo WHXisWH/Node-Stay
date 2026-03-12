@@ -1,5 +1,6 @@
 /**
  * MarketplaceService: listListings / createListing の結果を marketplace.store に反映する（SPEC §7）。
+ * idempotencyKey を必須とし、重複リクエストを防止する。
  */
 
 import type { NodeStayClient } from '@nodestay/api-client';
@@ -8,6 +9,11 @@ import { useMarketplaceStore } from '../stores/marketplace.store';
 import type { MarketplaceListing } from '../models/marketplace.model';
 
 type ListingStatus = MarketplaceListing['status'];
+
+/** idempotencyKey を生成する。prefix を付与することで操作種別を識別可能にする。 */
+function makeIdempotencyKey(prefix: string): string {
+  return `${prefix}-${crypto.randomUUID()}`;
+}
 
 class MarketplaceServiceClass {
   private _client: NodeStayClient | null = null;
@@ -36,14 +42,22 @@ class MarketplaceServiceClass {
     );
   }
 
-  /** 出品キャンセルをバックエンドに通知する（オンチェーン cancelListing 成功後に呼び出す）。 */
-  async cancelListing(listingId: string, userId: string): Promise<void> {
-    await this.client.cancelMarketplaceListing(listingId, userId);
+  /** 出品キャンセルをバックエンドに通知する（オンチェーン cancelListing 成功後に呼び出す）。idempotencyKey 必須。 */
+  async cancelListing(listingId: string, userId: string, idempotencyKey?: string): Promise<void> {
+    await this.client.cancelMarketplaceListing(
+      listingId,
+      userId,
+      idempotencyKey ?? makeIdempotencyKey(`cancel-${listingId}`),
+    );
   }
 
-  /** 購入をバックエンドに通知する（オンチェーン buyListing 成功後に呼び出す）。buyerUserId は walletAddress 可（BE で解決）。 */
-  async buyListing(listingId: string, buyerUserId: string): Promise<void> {
-    await this.client.buyMarketplaceListing(listingId, buyerUserId);
+  /** 購入をバックエンドに通知する（オンチェーン buyListing 成功後に呼び出す）。buyerUserId は walletAddress 可（BE で解決）。idempotencyKey 必須。 */
+  async buyListing(listingId: string, buyerUserId: string, idempotencyKey?: string): Promise<void> {
+    await this.client.buyMarketplaceListing(
+      listingId,
+      buyerUserId,
+      idempotencyKey ?? makeIdempotencyKey(`buy-${listingId}`),
+    );
   }
 
   async loadListings(): Promise<void> {

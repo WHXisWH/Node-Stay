@@ -12,6 +12,7 @@ import type { UsageRightStatus } from '../../../hooks/usePassesPage';
 const STATUS_CONFIG: Record<UsageRightStatus, { label: string; dotColor: string; badgeClass: string }> = {
   ACTIVE:      { label: '有効',      dotColor: 'bg-emerald-400', badgeClass: 'badge-green' },
   IN_USE:      { label: '利用中',    dotColor: 'bg-blue-400',    badgeClass: 'bg-blue-100 text-blue-700 badge' },
+  LISTED:      { label: '出品中',    dotColor: 'bg-purple-400',  badgeClass: 'bg-purple-100 text-purple-700 badge' },
   CONSUMED:    { label: '使用済み',  dotColor: 'bg-slate-300',   badgeClass: 'badge-gray' },
   EXPIRED:     { label: '期限切れ',  dotColor: 'bg-red-400',     badgeClass: 'badge-red' },
   TRANSFERRED: { label: '譲渡済み',  dotColor: 'bg-slate-300',   badgeClass: 'badge-gray' },
