@@ -32,8 +32,8 @@ export function middleware(request: NextRequest) {
   const authed = request.cookies.get('nodestay-authed')?.value;
   if (authed === '1') return NextResponse.next();
 
-  const loginUrl = request.nextUrl.clone();
-  loginUrl.pathname = '/';
+  // _rsc / _next 等の Next.js 内部パラメータを持ち込まないよう、クリーンな URL を直接構築する
+  const loginUrl = new URL('/', request.url);
   loginUrl.searchParams.set('redirect', pathname);
   return NextResponse.redirect(loginUrl);
 }

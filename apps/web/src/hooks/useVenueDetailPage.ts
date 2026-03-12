@@ -1,6 +1,7 @@
 /**
  * useVenueDetailPage: 店舗詳細 Controller（SPEC §8）。
  * venue.store は読み取り専用で扱い、VenueService / UsageRightService を呼び出す。
+ * 購入フローは useTxMode に統一し、ソーシャル（AA）/ ウォレットの分岐をこのファイル内に持たない。
  * View は本 Hook の戻り値のみで描画する。
  */
 
@@ -11,7 +12,7 @@ import { useVenueStore } from '../stores/venue.store';
 import { VenueService } from '../services/venue.service';
 import { CONTRACT_ADDRESSES } from '../services/config';
 import { UsageRightService } from '../services/usageRight.service';
-import { useJPYCApprove } from './useJPYC';
+import { useTxMode } from './useTxMode';
 import type { VenueListItem, PlanListItem } from '../models/venue.model';
 
 export interface UseVenueDetailPageReturn {
@@ -25,7 +26,7 @@ export interface UseVenueDetailPageReturn {
   purchasing: boolean;
   approving: boolean;
   purchaseError: string | null;
-  needsWalletApproval: boolean;
+  needsApproval: boolean;
   purchaseSuccess: boolean;
   mintStatus: 'idle' | 'pending' | 'confirmed' | 'timeout';
   mintedTokenId: string | null;
@@ -39,18 +40,23 @@ export function useVenueDetailPage(venueId: string | undefined): UseVenueDetailP
     plansLoading,
     plansError,
   } = useVenueStore();
+
+  // SIWE 認証済みアドレス（API 呼び出しに使用）
   const walletAddress = useUserStore((s) => s.walletAddress);
+
   const [selectedPlan, setSelectedPlan] = useState<PlanListItem | null>(null);
   const [purchasing, setPurchasing] = useState(false);
-  const [approving, setApproving] = useState(false);
   const [purchaseSuccess, setPurchaseSuccess] = useState(false);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const [mintStatus, setMintStatus] = useState<'idle' | 'pending' | 'confirmed' | 'timeout'>('idle');
   const [mintedTokenId, setMintedTokenId] = useState<string | null>(null);
-  const { approve } = useJPYCApprove();
+
+  // ソーシャル（AA）/ ウォレット を統一的に扱うトランザクションルーター
+  const { approveJPYC, approving, approveError } = useTxMode();
 
   const settlementAddress = CONTRACT_ADDRESSES.settlement;
-  const needsWalletApproval = isAddress(settlementAddress) && !!walletAddress;
+  // ウォレットアドレスがあり、かつ settlement アドレスが有効な場合に approve が必要
+  const needsApproval = isAddress(settlementAddress) && !!walletAddress;
 
   useEffect(() => {
     if (venueId) VenueService.loadVenueDetail(venueId);
@@ -64,18 +70,18 @@ export function useVenueDetailPage(venueId: string | undefined): UseVenueDetailP
     setMintedTokenId(null);
     setPurchasing(true);
     try {
-      if (needsWalletApproval) {
-        setApproving(true);
+      if (needsApproval) {
+        // useTxMode が loginMethod を見て AA / wagmi を自動選択
         const totalMinor = selectedPlan.basePriceMinor + selectedPlan.depositRequiredMinor;
-        const totalJPYC = totalMinor / 100;
-        await approve(settlementAddress as `0x${string}`, totalJPYC);
+        const totalJPYC  = totalMinor / 100;
+        await approveJPYC(settlementAddress as `0x${string}`, totalJPYC);
       }
 
       const purchaseResult = await UsageRightService.purchase(
         {
-          productId: selectedPlan.productId,
-          ownerUserId: walletAddress ?? undefined,
-          buyerWallet: walletAddress ?? undefined,
+          productId:    selectedPlan.productId,
+          ownerUserId:  walletAddress ?? undefined,
+          buyerWallet:  walletAddress ?? undefined,
         },
         `purchase-${selectedPlan.productId}-${Date.now()}`
       );
@@ -83,6 +89,7 @@ export function useVenueDetailPage(venueId: string | undefined): UseVenueDetailP
       setSelectedPlan(null);
       setMintStatus('pending');
 
+      // オンチェーンのミント完了を非同期で待機（UI 表示用）
       void (async () => {
         try {
           const tokenId = await UsageRightService.waitForOnchainToken(purchaseResult.usageRightId);
@@ -98,9 +105,8 @@ export function useVenueDetailPage(venueId: string | undefined): UseVenueDetailP
       })();
     } catch (e) {
       const msg = e instanceof Error ? e.message : '購入処理に失敗しました';
-      setPurchaseError(msg);
+      setPurchaseError(approveError ?? msg);
     } finally {
-      setApproving(false);
       setPurchasing(false);
     }
   };
@@ -116,7 +122,7 @@ export function useVenueDetailPage(venueId: string | undefined): UseVenueDetailP
     purchasing,
     approving,
     purchaseError,
-    needsWalletApproval,
+    needsApproval,
     purchaseSuccess,
     mintStatus,
     mintedTokenId,

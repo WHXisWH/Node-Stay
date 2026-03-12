@@ -125,6 +125,7 @@ class AuthServiceClass {
     }
     const { token } = (await verifyRes.json()) as { token: string };
 
+    // SIWE 認証済みアドレスをストアに保存（トランザクション用）
     useUserStore.getState().setWalletAddress(address);
     useUserStore.getState().setJwt(token);
     this.setAuthCookie(true);

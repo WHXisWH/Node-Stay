@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useLoginFlow } from '../../hooks/useLoginFlow';
 import { useNavState } from '../../hooks/useNavState';
@@ -9,14 +9,14 @@ import { useUiState } from '../../hooks/useUiState';
 import { useUserState } from '../../hooks/useUserState';
 
 const NAV_ITEMS = [
-  { href: '/', label: 'ホーム' },
-  { href: '/venues', label: '会場を探す' },
-  { href: '/explore', label: 'マップ' },
+  { href: '/',           label: 'ホーム' },
+  { href: '/venues',     label: '会場を探す' },
+  { href: '/explore',    label: 'マップ' },
   { href: '/marketplace', label: 'マーケット' },
   { href: '/usage-rights', label: '利用権' },
-  { href: '/sessions', label: 'セッション' },
-  { href: '/compute', label: 'コンピュート' },
-  { href: '/revenue', label: '収益' },
+  { href: '/sessions',   label: 'セッション' },
+  { href: '/compute',    label: 'コンピュート' },
+  { href: '/revenue',    label: '収益' },
 ] as const;
 
 async function copyToClipboard(value: string): Promise<void> {
@@ -24,11 +24,7 @@ async function copyToClipboard(value: string): Promise<void> {
     await navigator.clipboard.writeText(value);
     return;
   }
-
-  if (typeof document === 'undefined') {
-    throw new Error('clipboard unsupported');
-  }
-
+  if (typeof document === 'undefined') throw new Error('clipboard unsupported');
   const textarea = document.createElement('textarea');
   textarea.value = value;
   textarea.setAttribute('readonly', 'true');
@@ -46,21 +42,32 @@ export function Header() {
     mobileOpen,
     scrolled,
     loginModalOpen,
+    accountMenuOpen,
     closeMobile,
     toggleMobile,
     openLoginModal,
     closeLoginModal,
+    toggleAccountMenu,
+    closeAccountMenu,
   } = useUiState();
-  const { balance, walletAddress, isAuthenticated, loginMethod, walletLabel } = useUserState();
+
+  const {
+    balance,
+    walletAddress,
+    displayAddress,
+    isAuthenticated,
+    loginMethod,
+    walletLabel,
+    addressTypeLabel,
+  } = useUserState();
+
   const { chainSyncStatus, chainSyncLastError } = useSyncState();
   const { isNavItemActive } = useNavState();
+
   const {
+    loginStep,
     socialHint,
-    pendingWalletSignIn,
-    socialSigning,
-    isAuthenticating,
-    connecting,
-    signing,
+    isLoading,
     authError,
     connectErrorMessage,
     walletActionLabel,
@@ -71,17 +78,32 @@ export function Header() {
   } = useLoginFlow({ walletAddress, isAuthenticated, loginMethod, onCloseModal: closeLoginModal });
 
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const accountMenuRef = useRef<HTMLDivElement>(null);
 
+  // コピー状態を 1.8 秒後にリセット
   useEffect(() => {
     if (copyStatus === 'idle') return;
     const timer = window.setTimeout(() => setCopyStatus('idle'), 1800);
     return () => window.clearTimeout(timer);
   }, [copyStatus]);
 
-  const handleCopyWallet = async () => {
-    if (!walletAddress) return;
+  // アカウントドロップダウン外クリックで閉じる
+  useEffect(() => {
+    if (!accountMenuOpen) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (accountMenuRef.current && !accountMenuRef.current.contains(e.target as Node)) {
+        closeAccountMenu();
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [accountMenuOpen, closeAccountMenu]);
+
+  const handleCopyAddress = async () => {
+    const addr = displayAddress ?? walletAddress;
+    if (!addr) return;
     try {
-      await copyToClipboard(walletAddress);
+      await copyToClipboard(addr);
       setCopyStatus('copied');
     } catch {
       setCopyStatus('failed');
@@ -98,16 +120,26 @@ export function Header() {
     closeLoginModal();
   };
 
-  const authMethodLabel =
-    loginMethod === 'social'
-      ? 'ソーシャル認証'
-      : loginMethod === 'wallet'
-        ? 'ウォレット認証'
-        : isAuthenticated
-          ? '認証済み'
-          : '未認証';
-
   const copyLabel = copyStatus === 'copied' ? 'コピー済み' : copyStatus === 'failed' ? '失敗' : 'コピー';
+
+  /**
+   * Header 主ボタンの文案（3 状態）
+   *   未接続          : ウォレットを接続
+   *   接続済み未認証  : 署名してログイン
+   *   認証済み        : アカウント ▼（ドロップダウン付き）
+   */
+  const headerButtonLabel = (() => {
+    if (isLoading) return walletActionLabel;
+    if (isAuthenticated) return 'アカウント ▼';
+    if (displayAddress)  return '署名してログイン';
+    return 'ウォレットを接続';
+  })();
+
+  const authMethodLabel =
+    loginMethod === 'social' ? 'ソーシャル認証'
+    : loginMethod === 'wallet' ? 'ウォレット認証'
+    : isAuthenticated ? '認証済み'
+    : '未認証';
 
   return (
     <>
@@ -118,6 +150,7 @@ export function Header() {
       >
         <div className="container-main">
           <div className="h-16 flex items-center gap-3">
+            {/* ロゴ */}
             <Link href="/" className="flex items-center gap-2.5 shrink-0" onClick={closeMobile}>
               <div className="w-8 h-8 bg-linear-to-br from-brand-500 to-brand-700 rounded-lg flex items-center justify-center shadow-sm">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -134,6 +167,7 @@ export function Header() {
               </span>
             </Link>
 
+            {/* デスクトップナビゲーション */}
             <nav className="hidden lg:flex items-center gap-1 flex-1 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {NAV_ITEMS.map((item) => {
                 const active = isNavItemActive(item.href);
@@ -143,12 +177,8 @@ export function Header() {
                     href={item.href}
                     className={`px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap [word-break:keep-all] leading-none shrink-0 transition-colors ${
                       active
-                        ? scrolled
-                          ? 'bg-brand-50 text-brand-700'
-                          : 'bg-white/10 text-white'
-                        : scrolled
-                          ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                          : 'text-white/85 hover:text-white hover:bg-white/10'
+                        ? scrolled ? 'bg-brand-50 text-brand-700' : 'bg-white/10 text-white'
+                        : scrolled ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-50' : 'text-white/85 hover:text-white hover:bg-white/10'
                     }`}
                   >
                     {item.label}
@@ -157,7 +187,9 @@ export function Header() {
               })}
             </nav>
 
+            {/* デスクトップ右側エリア：チェーン同期インジケーター + アカウントボタン（最大 2 要素） */}
             <div className="hidden lg:flex items-center gap-2 shrink-0">
+              {/* チェーン同期状態（超広画面のみ表示） */}
               {chainSyncStatus?.isSyncing && (
                 <span
                   className={`hidden 2xl:flex items-center gap-1.5 text-xs px-2 py-1 rounded-md whitespace-nowrap ${
@@ -169,7 +201,6 @@ export function Header() {
                   同期中
                 </span>
               )}
-
               {chainSyncStatus && !chainSyncStatus.isSyncing && !chainSyncLastError && (
                 <span
                   className={`hidden 2xl:inline-flex text-xs px-2 py-1 rounded-md whitespace-nowrap ${
@@ -180,7 +211,6 @@ export function Header() {
                   同期OK
                 </span>
               )}
-
               {chainSyncLastError && (
                 <span
                   className={`text-xs px-2 py-1 rounded-md whitespace-nowrap max-w-[120px] truncate ${
@@ -192,47 +222,75 @@ export function Header() {
                 </span>
               )}
 
-              {walletAddress && (
-                <button
-                  onClick={handleCopyWallet}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap ${
-                    scrolled ? 'bg-slate-100 text-slate-800 hover:bg-slate-200' : 'bg-white/10 text-white hover:bg-white/15'
-                  }`}
-                  title={`ウォレットアドレスをコピー: ${walletAddress}`}
-                >
-                  {walletLabel}
-                </button>
-              )}
+              {/* アカウントドロップダウン（認証済み）/ ログインボタン（未認証） */}
+              {isAuthenticated ? (
+                <div className="relative" ref={accountMenuRef}>
+                  <button
+                    onClick={toggleAccountMenu}
+                    className="px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap bg-brand-600 text-white hover:bg-brand-700 transition-colors"
+                    aria-haspopup="true"
+                    aria-expanded={accountMenuOpen}
+                  >
+                    {headerButtonLabel}
+                  </button>
 
-              {isAuthenticated && balance !== null && (
-                <div className={`px-3 py-1.5 rounded-lg text-sm font-semibold whitespace-nowrap ${scrolled ? 'bg-jpyc-50 text-jpyc-700' : 'bg-white/10 text-white'}`}>
-                  {(balance / 100).toLocaleString('ja-JP')} JPYC
+                  {accountMenuOpen && (
+                    <div className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-slate-200 bg-white shadow-lg z-10 overflow-hidden">
+                      {/* アドレス・認証方式 */}
+                      <div className="px-4 py-3 border-b border-slate-100">
+                        <p className="text-[11px] text-slate-500 mb-1">{addressTypeLabel}</p>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs text-slate-700 truncate font-mono">
+                            {displayAddress ?? walletAddress ?? '—'}
+                          </p>
+                          <button
+                            onClick={handleCopyAddress}
+                            className="text-[11px] px-2 py-1 rounded bg-slate-100 text-slate-700 shrink-0"
+                          >
+                            {copyLabel}
+                          </button>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1">認証方式: {authMethodLabel}</p>
+                      </div>
+
+                      {/* JPYC 残高 */}
+                      {balance !== null && (
+                        <div className="px-4 py-2 border-b border-slate-100 flex items-center justify-between">
+                          <span className="text-xs text-slate-500">残高</span>
+                          <span className="text-sm font-semibold text-jpyc-700">
+                            {(balance / 100).toLocaleString('ja-JP')} JPYC
+                          </span>
+                        </div>
+                      )}
+
+                      {/* ログアウト */}
+                      <div className="px-4 py-2">
+                        <button
+                          onClick={() => { void handleLogout(); closeAccountMenu(); }}
+                          className="w-full rounded-lg px-3 py-2 text-sm font-semibold border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors"
+                        >
+                          ログアウト
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-
-              <button
-                onClick={handleOpenModal}
-                className="px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap bg-brand-600 text-white hover:bg-brand-700 transition-colors"
-                title={isAuthenticated ? 'アカウント' : 'ログイン'}
-              >
-                {isAuthenticated ? 'アカウント' : 'ログイン'}
-              </button>
-
-              {isAuthenticated && (
+              ) : (
+                /* 未認証時: ログインモーダルを開くボタン（3 状態文案） */
                 <button
-                  onClick={() => void handleLogout()}
-                  className={`px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
-                    scrolled ? 'text-slate-600 hover:bg-slate-100' : 'text-white/70 hover:bg-white/10'
-                  }`}
+                  onClick={handleOpenModal}
+                  disabled={isLoading}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold whitespace-nowrap bg-brand-600 text-white hover:bg-brand-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  ログアウト
+                  {headerButtonLabel}
                 </button>
               )}
             </div>
 
+            {/* モバイル右側エリア */}
             <div className="lg:hidden ml-auto flex items-center gap-2">
               <button
-                onClick={handleOpenModal}
+                onClick={isAuthenticated ? toggleAccountMenu : handleOpenModal}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 text-white hover:bg-brand-700"
               >
                 {isAuthenticated ? 'アカウント' : 'ログイン'}
@@ -259,26 +317,28 @@ export function Header() {
           </div>
         </div>
 
+        {/* モバイルメニュー */}
         {mobileOpen && (
           <div className="lg:hidden bg-white border-b border-slate-100 shadow-lg">
             <div className="container-main py-4 space-y-3">
+              {/* ウォレット情報カード */}
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-600">ウォレット</span>
+                  <span className="text-xs text-slate-600">{addressTypeLabel}</span>
                   <span className="text-xs font-semibold text-slate-900">{walletLabel}</span>
                 </div>
-                {walletAddress && (
+                {displayAddress && (
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-[11px] text-slate-600 truncate">{walletAddress}</p>
+                    <p className="text-[11px] text-slate-600 truncate font-mono">{displayAddress}</p>
                     <button
-                      onClick={handleCopyWallet}
+                      onClick={handleCopyAddress}
                       className="text-[11px] px-2 py-1 rounded bg-white border border-slate-200 text-slate-700"
                     >
                       {copyLabel}
                     </button>
                   </div>
                 )}
-                {walletAddress && <p className="text-[11px] text-slate-500">認証方式: {authMethodLabel}</p>}
+                {displayAddress && <p className="text-[11px] text-slate-500">認証方式: {authMethodLabel}</p>}
               </div>
 
               {isAuthenticated && balance !== null && (
@@ -291,6 +351,7 @@ export function Header() {
                 <button
                   onClick={() => void handleLogout()}
                   className="w-full rounded-lg px-3 py-2 text-sm font-semibold border border-slate-200 text-slate-700 hover:bg-slate-50"
+                  data-testid="mobile-logout-button"
                 >
                   ログアウト
                 </button>
@@ -298,6 +359,7 @@ export function Header() {
 
               {authError && <p className="text-xs text-red-500 px-1">{authError}</p>}
 
+              {/* ナビゲーションリンク */}
               <div className="pt-2 border-t border-slate-100 flex flex-col gap-1">
                 {NAV_ITEMS.map((item) => {
                   const active = isNavItemActive(item.href);
@@ -320,6 +382,7 @@ export function Header() {
         )}
       </header>
 
+      {/* ログインモーダル */}
       {loginModalOpen && (
         <div
           className="fixed inset-0 z-[60] bg-slate-950/60 backdrop-blur-sm p-4"
@@ -359,6 +422,7 @@ export function Header() {
             )}
 
             <div className="grid gap-4 md:grid-cols-2">
+              {/* ソーシャルログイン */}
               <section className="min-h-[320px] rounded-2xl border border-slate-200 p-5 bg-slate-50/50 flex flex-col">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="h-10 w-10 rounded-full bg-emerald-100 text-emerald-700 grid place-items-center font-bold">S</div>
@@ -369,13 +433,16 @@ export function Header() {
                 </p>
                 <button
                   onClick={() => void handleSocialLogin()}
-                  disabled={socialSigning || signing || isAuthenticating || isAuthenticated}
+                  disabled={isLoading || isAuthenticated}
                   className="w-full rounded-xl px-4 py-3 text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed mt-auto"
                 >
-                  {socialSigning ? '認証画面を起動中...' : 'ソーシャルでログイン'}
+                  {loginStep === 'connecting' && loginMethod === 'social'
+                    ? '認証画面を起動中...'
+                    : 'ソーシャルでログイン'}
                 </button>
               </section>
 
+              {/* ウォレットログイン */}
               <section className="min-h-[320px] rounded-2xl border border-slate-200 p-5 bg-orange-50/40 flex flex-col">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="h-10 w-10 rounded-full bg-orange-100 text-orange-700 grid place-items-center font-bold">W</div>
@@ -385,12 +452,12 @@ export function Header() {
                   MetaMask などのウォレットを接続し、署名でログインします。
                 </p>
                 <p className="text-xs text-slate-500 mt-2">現在: {walletLabel}</p>
-                {walletAddress && (
+                {displayAddress && loginMethod === 'wallet' && (
                   <div className="mt-2 mb-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
-                    <p className="text-[11px] text-slate-500 mb-1">ウォレットアドレス</p>
+                    <p className="text-[11px] text-slate-500 mb-1">ウォレット認証（ウォレット認証）</p>
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs text-slate-700 truncate">{walletAddress}</p>
-                      <button onClick={handleCopyWallet} className="text-[11px] px-2 py-1 rounded bg-slate-100 text-slate-700">
+                      <p className="text-xs text-slate-700 truncate font-mono">{displayAddress}</p>
+                      <button onClick={handleCopyAddress} className="text-[11px] px-2 py-1 rounded bg-slate-100 text-slate-700">
                         {copyLabel}
                       </button>
                     </div>
@@ -401,18 +468,19 @@ export function Header() {
                 )}
                 <button
                   onClick={() => void handleWalletLogin()}
-                  disabled={connecting || signing || isAuthenticating || isAuthenticated || pendingWalletSignIn}
+                  disabled={isLoading || isAuthenticated}
                   className="w-full rounded-xl px-4 py-3 text-sm font-semibold bg-orange-600 text-white hover:bg-orange-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed mt-auto"
                 >
-                  {walletActionLabel}
+                  {loginMethod === 'wallet' ? walletActionLabel : 'ウォレットを接続してログイン'}
                 </button>
               </section>
             </div>
 
+            {/* エラー・ヒントメッセージ */}
             {(socialHint || authError || connectErrorMessage) && (
               <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-1">
-                {socialHint && <p className="text-xs text-slate-600">{socialHint}</p>}
-                {authError && <p className="text-xs text-red-600">{authError}</p>}
+                {socialHint         && <p className="text-xs text-slate-600">{socialHint}</p>}
+                {authError          && <p className="text-xs text-red-600">{authError}</p>}
                 {connectErrorMessage && <p className="text-xs text-red-600">{connectErrorMessage}</p>}
               </div>
             )}

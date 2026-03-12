@@ -2,8 +2,9 @@
 
 /**
  * useWalletSync
- * wagmi の接続状態を useUserStore に同期するブリッジ Hook。
+ * wagmi の接続状態を useUserStore の connectedWalletAddress に同期するブリッジ Hook。
  * Header など最上位コンポーネントで一度だけ呼び出す。
+ * ソーシャルログイン中は Web3Auth アドレスを優先するため wagmi の同期をスキップする。
  */
 
 import { useEffect, useRef } from 'react';
@@ -12,14 +13,12 @@ import { useUserStore } from '../stores/user.store';
 
 export function useWalletSync() {
   const { address, isConnected } = useAccount();
-  const setWalletAddress = useUserStore((s) => s.setWalletAddress);
+  const setConnectedWalletAddress = useUserStore((s) => s.setConnectedWalletAddress);
   const loginMethod = useUserStore((s) => s.loginMethod);
   const prevWagmiAddressRef = useRef<`0x${string}` | null>(null);
 
   useEffect(() => {
-    const currentStoreAddress = useUserStore.getState().walletAddress;
-
-    // ソーシャルログイン中は Web3Auth のアドレスを優先し、wagmi の同期で上書きしない。
+    // ソーシャルログイン中は Web3Auth のアドレスを優先し、wagmi の同期で上書きしない
     if (loginMethod === 'social') {
       if (isConnected && address) {
         prevWagmiAddressRef.current = address;
@@ -31,20 +30,20 @@ export function useWalletSync() {
 
     if (isConnected && address) {
       prevWagmiAddressRef.current = address;
-      setWalletAddress(address);
+      setConnectedWalletAddress(address);
       return;
     }
 
+    // wagmi が切断された場合、以前に同期したアドレスをクリアする
     if (
       !isConnected &&
-      prevWagmiAddressRef.current &&
-      currentStoreAddress?.toLowerCase() === prevWagmiAddressRef.current.toLowerCase()
+      prevWagmiAddressRef.current
     ) {
-      setWalletAddress(null);
+      setConnectedWalletAddress(null);
     }
 
     if (!isConnected) {
       prevWagmiAddressRef.current = null;
     }
-  }, [address, isConnected, loginMethod, setWalletAddress]);
+  }, [address, isConnected, loginMethod, setConnectedWalletAddress]);
 }

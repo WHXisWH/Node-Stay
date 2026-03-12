@@ -1,6 +1,9 @@
 /**
  * Re-export from models/stores (SPEC §9).
  */
+/**
+ * Re-export from models/stores (SPEC §9).
+ */
 export {
   useUserStore,
   type UserState,

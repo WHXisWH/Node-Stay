@@ -134,7 +134,7 @@ function PurchaseModal({
   onConfirm,
   purchasing,
   approving,
-  needsWalletApproval,
+  needsApproval,
 }: {
   plan: PlanListItem;
   venueName: string;
@@ -142,7 +142,7 @@ function PurchaseModal({
   onConfirm: () => void;
   purchasing: boolean;
   approving: boolean;
-  needsWalletApproval: boolean;
+  needsApproval: boolean;
 }) {
   return (
     <div
@@ -232,7 +232,7 @@ function PurchaseModal({
                 処理中...
               </span>
             ) : (
-              needsWalletApproval ? '承認して購入する' : 'JPYC で購入する'
+              needsApproval ? '承認して購入する' : 'JPYC で購入する'
             )}
           </button>
         </div>
@@ -257,7 +257,7 @@ export default function VenueDetailPage() {
     purchasing,
     approving,
     purchaseError,
-    needsWalletApproval,
+    needsApproval,
     purchaseSuccess,
     handlePurchase,
   } = useVenueDetailPage(venueId);
@@ -468,7 +468,7 @@ export default function VenueDetailPage() {
           onConfirm={handlePurchase}
           purchasing={purchasing}
           approving={approving}
-          needsWalletApproval={needsWalletApproval}
+          needsApproval={needsApproval}
         />
       )}
     </>

@@ -3,13 +3,14 @@
 /**
  * useMarketplacePage: 二次市場ブラウズ Controller（SPEC §8）。
  * 出品一覧を API から取得し、フィルター・購入フローを保持；View は表示のみ。
- * 購入処理は loginMethod に応じて AA（ソーシャルログイン）または通常 wagmi フローを選択。
+ * 購入処理は useTxMode に統一し、AA / wagmi の分岐をこのファイル内に持たない。
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createNodeStayClient } from '../services/nodestay';
 import { useMarketplaceWrite } from './useMarketplaceWrite';
 import { useAaBuyListing } from './useAaBuyListing';
+import { useTxMode } from './useTxMode';
 import { useUserStore } from '../stores/user.store';
 import { MarketplaceSyncOutboxService } from '../services/marketplaceSyncOutbox.service';
 
@@ -77,18 +78,20 @@ export function useMarketplacePage(): UseMarketplacePageReturn {
   const [purchaseSuccess, setPurchaseSuccess] = useState(false);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
 
-  // ログイン方法を取得（AA 判定に使用）
-  const loginMethod = useUserStore((s) => s.loginMethod);
+  // SIWE 認証済みアドレス（バックエンド同期の buyerUserId に使用）
   const walletAddress = useUserStore((s) => s.walletAddress);
+
+  // 統一トランザクションルーター（AA / wagmi の選択を一元管理）
+  const { mode } = useTxMode();
 
   // 通常ウォレット購入（JPYC approve → buyListing）
   const { buyListing: wagmiBuyListing, pending: wagmiPending, error: wagmiError } = useMarketplaceWrite();
   // AA 購入（ソーシャルログイン時、単一 UserOperation で approve + buy）
   const { buyListing: aaBuyListing, pending: aaPending, error: aaError } = useAaBuyListing();
 
-  // loginMethod に応じて購入状態を統合
-  const purchasing = loginMethod === 'social' ? aaPending : wagmiPending;
-  const writeError = loginMethod === 'social' ? aaError : wagmiError;
+  // mode に応じて購入状態を統合
+  const purchasing = mode === 'aa' ? aaPending : wagmiPending;
+  const writeError = mode === 'aa' ? aaError : wagmiError;
 
   /** API からマーケットプレイス出品一覧を取得し Listing 型にマッピング */
   const loadListings = useCallback(async () => {
@@ -149,9 +152,9 @@ export function useMarketplacePage(): UseMarketplacePageReturn {
     }
 
     // 利用時間フィルター
-    if (durationFilter === 'short') result = result.filter((l) => l.durationMinutes <= 180);
+    if (durationFilter === 'short')  result = result.filter((l) => l.durationMinutes <= 180);
     else if (durationFilter === 'medium') result = result.filter((l) => l.durationMinutes > 180 && l.durationMinutes <= 360);
-    else if (durationFilter === 'long') result = result.filter((l) => l.durationMinutes > 360);
+    else if (durationFilter === 'long')   result = result.filter((l) => l.durationMinutes > 360);
 
     // ソート
     return [...result].sort((a, b) => {
@@ -163,7 +166,7 @@ export function useMarketplacePage(): UseMarketplacePageReturn {
     });
   }, [listings, searchQuery, sortBy, durationFilter]);
 
-  /** 購入処理：loginMethod に応じて AA または通常 wagmi フローを実行し、バックエンドに同期 */
+  /** 購入処理：mode に応じて AA または通常 wagmi フローを実行し、バックエンドに同期 */
   const handlePurchase = async () => {
     if (!buyingListing || !walletAddress) return;
     setPurchaseError(null);
@@ -171,26 +174,26 @@ export function useMarketplacePage(): UseMarketplacePageReturn {
 
     // オンチェーンは onchainListingId（数値）を使用。DB は listingId（UUID）を使用。
     const onchainListingId = buyingListing.onchainTokenId ?? buyingListing.listingId;
-    const dbListingId = buyingListing.listingId;
-    const priceMinor = String(buyingListing.priceMinor);
-    const idempotencyKey = `buy-${dbListingId}-${Date.now()}`;
+    const dbListingId      = buyingListing.listingId;
+    const priceMinor       = String(buyingListing.priceMinor);
+    const idempotencyKey   = `buy-${dbListingId}-${Date.now()}`;
 
     let txHash: string | null = null;
 
-    if (loginMethod === 'social') {
-      // AA フロー（ソーシャルログイン）
+    if (mode === 'aa') {
+      // AA フロー（ソーシャルログイン）: approve + buyListing を単一 UserOperation で送信
       const result = await aaBuyListing(onchainListingId, priceMinor);
       txHash = result?.txHash ?? null;
     } else {
-      // 通常ウォレットフロー
+      // 通常ウォレットフロー: approve → buyListing を順次送信
       txHash = await wagmiBuyListing(onchainListingId, priceMinor);
     }
 
     if (txHash) {
       // オンチェーン成功後、バックエンドに同期（リトライ付き）
       const syncResult = await MarketplaceSyncOutboxService.enqueueBuyListing({
-        listingId: dbListingId,
-        buyerUserId: walletAddress,
+        listingId:    dbListingId,
+        buyerUserId:  walletAddress,
         idempotencyKey,
       });
       if (syncResult.state === 'failed') {

@@ -1,6 +1,9 @@
 /**
- * User store.
- * walletAddress / jwt は Web3Auth フローから同期される。
+ * ユーザーストア。
+ * アドレスは役割ごとに3フィールドで管理する。
+ *   connectedWalletAddress — wagmi で注入された外部ウォレットアドレス
+ *   socialWalletAddress    — Web3Auth / SNS ログイン由来のスマートウォレットアドレス
+ *   walletAddress          — SIWE 認証済みアドレス（トランザクション送信に使用）
  * balance は UserService が書き込む（SPEC §9）。
  */
 
@@ -12,7 +15,11 @@ import type { Balance } from '../user.model';
 export type LoginMethod = 'social' | 'wallet' | null;
 
 export interface UserState {
-  /** 接続中のウォレットアドレス（未接続時は null） */
+  /** wagmi 注入ウォレットの接続アドレス（未接続時は null） */
+  connectedWalletAddress: `0x${string}` | null;
+  /** SNS / Web3Auth 由来のスマートウォレットアドレス（未ログイン時は null） */
+  socialWalletAddress: `0x${string}` | null;
+  /** SIWE 認証済みアドレス（トランザクション送信に使用）。未認証時は null */
   walletAddress: `0x${string}` | null;
   /** SIWE 認証後に発行される JWT（未認証時は null） */
   jwt: string | null;
@@ -28,6 +35,11 @@ export interface UserState {
 }
 
 export interface UserActions {
+  /** wagmi 注入ウォレットアドレスを設定する */
+  setConnectedWalletAddress: (address: `0x${string}` | null) => void;
+  /** SNS / Web3Auth アドレスを設定する */
+  setSocialWalletAddress: (address: `0x${string}` | null) => void;
+  /** SIWE 認証済みアドレスを設定する（auth.service.ts からのみ呼び出す） */
   setWalletAddress: (address: `0x${string}` | null) => void;
   setJwt: (jwt: string | null) => void;
   /** ログイン方法を設定する（social = AA 対応、wallet = 通常ウォレット） */
@@ -42,34 +54,54 @@ export interface UserActions {
 }
 
 const initialState: UserState = {
-  walletAddress:   null,
-  jwt:             null,
-  isAuthenticated: false,
-  loginMethod:     null,
-  balance:         null,
-  loading:         false,
-  error:           null,
-  activeSessionId: null,
+  connectedWalletAddress: null,
+  socialWalletAddress:    null,
+  walletAddress:          null,
+  jwt:                    null,
+  isAuthenticated:        false,
+  loginMethod:            null,
+  balance:                null,
+  loading:                false,
+  error:                  null,
+  activeSessionId:        null,
 };
 
 export const useUserStore = create<UserState & UserActions>()(
   persist(
     (set) => ({
       ...initialState,
-      setWalletAddress: (walletAddress) => set({ walletAddress }),
-      setJwt: (jwt) => set({ jwt, isAuthenticated: jwt !== null }),
+      setConnectedWalletAddress: (connectedWalletAddress) => set({ connectedWalletAddress }),
+      setSocialWalletAddress:    (socialWalletAddress)    => set({ socialWalletAddress }),
+      setWalletAddress:          (walletAddress)          => set({ walletAddress }),
+      setJwt:        (jwt) => set({ jwt, isAuthenticated: jwt !== null }),
       setLoginMethod: (loginMethod) => set({ loginMethod }),
-      signOut: () => set({ jwt: null, isAuthenticated: false, walletAddress: null, loginMethod: null, balance: null, activeSessionId: null }),
+      signOut: () => set({
+        jwt:                    null,
+        isAuthenticated:        false,
+        walletAddress:          null,
+        connectedWalletAddress: null,
+        socialWalletAddress:    null,
+        loginMethod:            null,
+        balance:                null,
+        activeSessionId:        null,
+      }),
       setBalance: (balance) => set({ balance, error: null }),
       setLoading: (loading) => set({ loading }),
-      setError: (error) => set({ error, loading: false }),
-      clearError: () => set({ error: null }),
+      setError:   (error)   => set({ error, loading: false }),
+      clearError: ()        => set({ error: null }),
       setActiveSessionId: (activeSessionId) => set({ activeSessionId }),
     }),
     {
-      name:    'nodestay-user',
-      // jwt / walletAddress / activeSessionId / loginMethod を LocalStorage に永続化（残高は毎回再取得）
-      partialize: (s) => ({ jwt: s.jwt, isAuthenticated: s.isAuthenticated, walletAddress: s.walletAddress, loginMethod: s.loginMethod, activeSessionId: s.activeSessionId }),
+      name: 'nodestay-user',
+      // jwt / walletAddress / loginMethod / activeSessionId を LocalStorage に永続化
+      // connectedWalletAddress / socialWalletAddress は揮発性のため永続化しない
+      partialize: (s) => ({
+        jwt:             s.jwt,
+        isAuthenticated: s.isAuthenticated,
+        walletAddress:   s.walletAddress,
+        loginMethod:     s.loginMethod,
+        activeSessionId: s.activeSessionId,
+      }),
     },
   ),
 );
