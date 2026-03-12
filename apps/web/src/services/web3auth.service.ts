@@ -7,6 +7,7 @@ const REQUESTED_NETWORK = process.env.NEXT_PUBLIC_WEB3AUTH_NETWORK ?? 'sapphire_
 type Web3AuthSdk = typeof import('@web3auth/modal');
 type Web3AuthInstance = import('@web3auth/modal').Web3Auth;
 type Web3AuthProvider = import('@web3auth/modal').IProvider;
+
 let web3AuthPromise: Promise<Web3AuthInstance> | null = null;
 let connectedProvider: Web3AuthProvider | null = null;
 
@@ -79,6 +80,30 @@ async function getWeb3Auth(): Promise<Web3AuthInstance> {
   return web3AuthPromise;
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isRecoverableSessionError(error: unknown): boolean {
+  const message = errorMessage(error).toLowerCase();
+  return (
+    message.includes('session expired')
+    || message.includes('invalid public key')
+    || message.includes('not authenticated')
+  );
+}
+
+async function resetWeb3Auth(): Promise<void> {
+  if (web3AuthPromise) {
+    const web3auth = await web3AuthPromise.catch(() => null);
+    if (web3auth) {
+      await web3auth.logout({ cleanup: true }).catch(() => {});
+    }
+  }
+  web3AuthPromise = null;
+  connectedProvider = null;
+}
+
 async function getWalletClient(provider: Web3AuthProvider) {
   return createWalletClient({
     transport: custom(provider as never),
@@ -87,15 +112,26 @@ async function getWalletClient(provider: Web3AuthProvider) {
 
 /**
  * Web3AuthService
- * ソーシャルログイン経由のウォレット接続を提供。
- * AA 機能では getConnectedProvider() で provider を再利用する。
+ * ソーシャルログインのウォレット接続と再利用 provider を管理する。
  */
 class Web3AuthServiceClass {
   async connectSocial(): Promise<{ address: `0x${string}`; signMessage: (message: string) => Promise<string> }> {
-    const web3auth = await getWeb3Auth();
-    const provider = await web3auth.connect();
+    let provider: Web3AuthProvider | null = null;
+
+    try {
+      provider = await (await getWeb3Auth()).connect();
+    } catch (error) {
+      if (!isRecoverableSessionError(error)) {
+        throw error;
+      }
+
+      // セッション破損時はインスタンスを作り直して 1 回だけ再試行する。
+      await resetWeb3Auth();
+      provider = await (await getWeb3Auth()).connect();
+    }
+
     if (!provider) {
-      throw new Error('ソーシャルログインがキャンセルされました。');
+      throw new Error('ソーシャルログインの接続に失敗しました。');
     }
     connectedProvider = provider;
 
@@ -108,22 +144,17 @@ class Web3AuthServiceClass {
 
     return {
       address,
-      signMessage: async (message: string) => {
-        return walletClient.signMessage({ account: address, message });
-      },
+      signMessage: async (message: string) => walletClient.signMessage({ account: address, message }),
     };
   }
 
   async logout(): Promise<void> {
-    if (!web3AuthPromise) return;
-    const web3auth = await web3AuthPromise;
-    await web3auth.logout({ cleanup: true });
-    connectedProvider = null;
+    await resetWeb3Auth();
   }
 
   /**
-   * 接続済みの Web3Auth provider を取得する。
-   * AA UserOperation 送信時に使用。
+   * 認証済み Web3Auth provider を返す。
+   * AA UserOperation 送信時に使用する。
    */
   getConnectedProvider(): Web3AuthProvider | null {
     return connectedProvider;

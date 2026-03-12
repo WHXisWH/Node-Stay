@@ -7,10 +7,12 @@ import { useUserStore } from '../models/stores/user.store';
 import { useAuth } from './useAuth';
 import { Web3AuthService } from '../services/web3auth.service';
 import { CHAIN_CONFIG } from '../services/config';
+import type { LoginMethod } from '../models/stores/user.store';
 
 export interface UseLoginFlowParams {
   walletAddress: `0x${string}` | null;
   isAuthenticated: boolean;
+  loginMethod: LoginMethod;
   onCloseModal: () => void;
 }
 
@@ -30,11 +32,11 @@ export interface UseLoginFlowReturn {
 }
 
 /**
- * ログインフロー全体を管理するフック
- * ウォレット接続、SIWE 署名、ソーシャルログインを統合
+ * ログイン UI の制御をまとめる Hook。
+ * ウォレット接続 + SIWE 認証 + ソーシャルログインを統合する。
  */
 export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
-  const { walletAddress, isAuthenticated, onCloseModal } = params;
+  const { walletAddress, isAuthenticated, loginMethod, onCloseModal } = params;
   const [socialHint, setSocialHint] = useState<string | null>(null);
   const [pendingWalletSignIn, setPendingWalletSignIn] = useState(false);
   const [socialSigning, setSocialSigning] = useState(false);
@@ -47,28 +49,28 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
   const { disconnect } = useDisconnect();
   const { signIn, signInWithCustomSigner, signOut, signing, authError } = useAuth(wagmiAddress ?? null);
 
-  // 認証成功時にモーダルを閉じてリダイレクト
   useEffect(() => {
-    if (isAuthenticated) {
-      onCloseModal();
-      if (typeof window !== 'undefined') {
-        const params = new URLSearchParams(window.location.search);
-        const redirect = params.get('redirect');
-        if (redirect && redirect.startsWith('/')) {
-          router.replace(redirect);
-        }
+    if (!isAuthenticated) return;
+
+    onCloseModal();
+    if (typeof window !== 'undefined') {
+      const query = new URLSearchParams(window.location.search);
+      const redirect = query.get('redirect');
+      if (redirect && redirect.startsWith('/')) {
+        router.replace(redirect);
       }
     }
   }, [isAuthenticated, onCloseModal, router]);
 
-  // ウォレット接続完了後に自動署名
   useEffect(() => {
     if (!pendingWalletSignIn || !walletAddress) return;
     setPendingWalletSignIn(false);
     void signIn();
   }, [pendingWalletSignIn, walletAddress, signIn]);
 
-  const clearMessages = useCallback(() => setSocialHint(null), []);
+  const clearMessages = useCallback(() => {
+    setSocialHint(null);
+  }, []);
 
   const handleWalletLogin = useCallback(async () => {
     if (isAuthenticated) {
@@ -127,10 +129,12 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
   const walletActionLabel = useMemo(() => {
     if (connecting || pendingWalletSignIn) return 'ウォレット接続中...';
     if (signing) return '署名中...';
+    if (isAuthenticated && loginMethod === 'social') return 'ソーシャル認証済み';
+    if (isAuthenticated && loginMethod === 'wallet') return 'ウォレット認証済み';
     if (isAuthenticated) return '認証済み';
-    if (!walletAddress) return 'ウォレットでログイン';
+    if (!walletAddress) return 'ウォレットを接続してログイン';
     return 'ウォレット署名でログイン';
-  }, [connecting, isAuthenticated, pendingWalletSignIn, signing, walletAddress]);
+  }, [connecting, isAuthenticated, loginMethod, pendingWalletSignIn, signing, walletAddress]);
 
   return {
     socialHint,

@@ -4,6 +4,7 @@ import { useEffect, useMemo } from 'react';
 import { useUserStore } from '../models/stores/user.store';
 import { useWalletSync } from './useWalletSync';
 import { UserService } from '../services/user.service';
+import type { LoginMethod } from '../models/stores/user.store';
 
 function shortAddress(address: string): string {
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -13,25 +14,25 @@ export interface UseUserStateReturn {
   balance: number | null;
   walletAddress: `0x${string}` | null;
   isAuthenticated: boolean;
+  loginMethod: LoginMethod;
   walletLabel: string;
 }
 
 /**
- * ユーザー状態を提供するフック
- * ウォレット同期と残高取得を自動実行
+ * ユーザー状態を UI 用に整形して返す Hook。
+ * ウォレット同期と残高取得を自動で実行する。
  */
 export function useUserState(): UseUserStateReturn {
   const balance = useUserStore((s) => s.balance?.balanceMinor ?? null);
   const walletAddress = useUserStore((s) => s.walletAddress);
   const isAuthenticated = useUserStore((s) => s.isAuthenticated);
+  const loginMethod = useUserStore((s) => s.loginMethod);
 
   useWalletSync();
 
-  // 認証時に残高を取得
   useEffect(() => {
-    if (isAuthenticated) {
-      UserService.getBalance().catch(() => {});
-    }
+    if (!isAuthenticated) return;
+    UserService.getBalance().catch(() => {});
   }, [isAuthenticated]);
 
   const walletLabel = useMemo(() => {
@@ -43,6 +44,7 @@ export function useUserState(): UseUserStateReturn {
     balance,
     walletAddress,
     isAuthenticated,
+    loginMethod,
     walletLabel,
   };
 }

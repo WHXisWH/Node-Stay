@@ -2,6 +2,19 @@
 const nextConfig = {
   reactStrictMode: true,
   experimental: {},
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          {
+            key: 'Cross-Origin-Opener-Policy',
+            value: 'same-origin-allow-popups',
+          },
+        ],
+      },
+    ];
+  },
   webpack: (config) => {
     config.resolve = config.resolve ?? {};
     config.resolve.alias = config.resolve.alias ?? {};
