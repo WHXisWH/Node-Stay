@@ -1,6 +1,6 @@
 # NodeStay アーキテクチャ詳細
 
-> 最終更新：2026-03-08
+> 最終更新：2026-03-13
 
 ---
 
@@ -31,7 +31,12 @@
 ```mermaid
 graph TB
     subgraph Client["クライアント層"]
-        Browser["ブラウザ<br/>（MetaMask / RainbowKit）"]
+        Browser["ブラウザ<br/>（MetaMask / RainbowKit / Web3Auth）"]
+    end
+
+    subgraph AA["AA インフラ層"]
+        ZeroDevBundler["ZeroDev Bundler<br/>rpc.zerodev.app"]
+        PimlicoPaymaster["Pimlico Paymaster<br/>api.pimlico.io"]
     end
 
     subgraph Web["apps/web — Next.js 14 (App Router)"]
@@ -108,17 +113,19 @@ graph TB
     end
 
     subgraph HookLayer["Custom Hooks (src/hooks/)"]
-        useVenueDetail["useVenueDetailPage<br/>JPYC approve → purchase"]
+        useVenueDetail["useVenueDetailPage<br/>useTxMode → approve → purchase"]
         usePasses["usePassesPage"]
         useSession["useSessionPage<br/>activeSessionId → getSession"]
-        useMarket["useMarketplacePage<br/>listMarketplaceListings"]
-        useMarketWrite["useMarketplaceWrite<br/>approve → createListing / buyListing"]
+        useMarket["useMarketplacePage<br/>useTxMode → buyListing"]
+        useMarketWrite["useMarketplaceWrite<br/>wagmi: approve → createListing / buyListing"]
         useRevenue["useRevenueDashboard<br/>wagmi claim"]
         useMerchant["useMerchant*<br/>listVenues → listMachines"]
+        useTxMode["useTxMode（統一TXルーター）<br/>loginMethod → aa | wallet"]
+        useLoginFlow["useLoginFlow（状態機械）<br/>idle→connecting→signing→verifying→error"]
     end
 
     subgraph StateLayer["状態管理 (src/models/stores/)"]
-        UserStore["user.store<br/>jwt / walletAddress<br/>activeSessionId（永続化）"]
+        UserStore["user.store<br/>jwt / walletAddress（SIWE）<br/>connectedWalletAddress（wagmi）<br/>socialWalletAddress（Web3Auth）<br/>activeSessionId（永続化）"]
         ComputeStore["compute.store<br/>ジョブ状態"]
     end
 
@@ -127,10 +134,17 @@ graph TB
         ComputeService["compute.service.ts"]
     end
 
-    subgraph ChainLayer["チェーン操作 (wagmi)"]
-        useJPYC["useJPYC<br/>approve + waitForReceipt"]
+    subgraph ChainLayer["チェーン操作 (wagmi / AA)"]
+        useJPYC["useJPYC<br/>wagmi approve + waitForReceipt"]
+        useAaTx["useAaTransaction<br/>sendUserOp（ZeroDev Kernel）"]
+        useAaBuy["useAaBuyListing<br/>approve + buyListing を単一 UserOp"]
         useWrite["useWriteContract<br/>Marketplace / RevenueRight"]
         RainbowKit["RainbowKit<br/>ウォレット接続"]
+    end
+
+    subgraph AALayer["AA インフラ (src/services/aa/)"]
+        KernelClient["kernelClient.ts<br/>ZeroDev Kernel v0.3.1<br/>+ ZeroDev Bundler<br/>+ Pimlico Paymaster"]
+        EncodeCalls["encodeMarketplaceCalls.ts<br/>callData エンコーダー"]
     end
 
     Layout --> Home & Venues & VenueDetail & Passes & Sessions & Marketplace & Compute & Revenue & Merchant
@@ -143,7 +157,14 @@ graph TB
 
     useVenueDetail & usePasses & useSession & useMarket & useMerchant --> NodeStayClient
     useRevenue --> NodeStayClient
-    useVenueDetail --> useJPYC
+    useVenueDetail --> useTxMode
+    useMarket --> useTxMode
+    useTxMode -->|"wallet モード"| useJPYC
+    useTxMode -->|"AA モード"| useAaTx
+    useMarket -->|"AA モード"| useAaBuy
+    useAaBuy --> useAaTx
+    useAaTx --> KernelClient
+    useAaTx --> EncodeCalls
     useMarketWrite --> useJPYC & useWrite
     useRevenue --> useWrite
     Compute --> ComputeService
@@ -152,12 +173,14 @@ graph TB
     useVenueDetail --> UserStore
     Compute --> ComputeStore
     RainbowKit --> UserStore
+    useLoginFlow --> UserStore
 
     style NextApp fill:#1e3a5f,color:#fff
     style HookLayer fill:#14532d,color:#fff
     style StateLayer fill:#4a1d96,color:#fff
     style ServiceLayer fill:#7c2d12,color:#fff
     style ChainLayer fill:#1e1b4b,color:#fff
+    style AALayer fill:#7c3aed,color:#fff
 ```
 
 ---
@@ -252,33 +275,59 @@ sequenceDiagram
 
 ### 1-5. データフロー（書き込み：購入フロー）
 
+ログイン方法によって approve の実行経路が異なります。`useTxMode` が自動で切り替えます。
+
+**ウォレットログイン時（wagmi モード）**
+
 ```mermaid
 sequenceDiagram
     participant User as ユーザー
     participant Hook as useVenueDetailPage
-    participant JPYC as useJPYC
+    participant TxMode as useTxMode（walletモード）
     participant Wallet as MetaMask
     participant API as NestJS API
-    participant DB as PostgreSQL
     participant Chain as Polygon Amoy
 
     User->>Hook: 「購入」ボタン押下
-    Hook->>JPYC: approve(settlementAddress, price)
-    JPYC->>Wallet: 署名要求
-    Wallet-->>Chain: JPYC.approve tx 送信
-    Chain-->>JPYC: 承認完了
-    JPYC-->>Hook: approve 成功
-
-    Hook->>API: POST /v1/usage-rights/purchase<br/>{ productId, buyerWallet }
-    API->>DB: usageRight.create(status=ACTIVE)
-    DB-->>API: UsageRight レコード
+    Hook->>TxMode: approveJPYC(settlement, amount)
+    TxMode->>Wallet: JPYC.approve 署名要求
+    Wallet-->>Chain: approve tx 送信
+    Chain-->>TxMode: 承認完了
+    TxMode-->>Hook: approve 成功
+    Hook->>API: POST /v1/usage-rights/purchase
     API-->>Hook: { usageRightId }
-
     Note over API,Chain: Fire-and-forget（非同期）
-    API-)Chain: UsageRight.mint(buyerWallet, tokenId, ...)
-    Chain-)API: tx hash
-    API-)DB: onchainTxHash 更新
+    API-)Chain: UsageRight.mint(buyerWallet, ...)
+    Hook-->>User: 購入完了表示
+```
 
+**ソーシャルログイン時（AA モード）**
+
+```mermaid
+sequenceDiagram
+    participant User as ユーザー
+    participant Hook as useVenueDetailPage
+    participant TxMode as useTxMode（AAモード）
+    participant Kernel as ZeroDev Kernel
+    participant Bundler as ZeroDev Bundler
+    participant Paymaster as Pimlico Paymaster
+    participant API as NestJS API
+    participant Chain as Polygon Amoy
+
+    User->>Hook: 「購入」ボタン押下
+    Hook->>TxMode: approveJPYC(settlement, amount)
+    TxMode->>Kernel: sendUserOp([JPYC.approve])
+    Kernel->>Paymaster: pm_getPaymasterData
+    Paymaster-->>Kernel: スポンサーデータ
+    Kernel->>Bundler: eth_sendUserOperation
+    Bundler-->>Chain: UserOp 送信（ガスレス）
+    Chain-->>Kernel: tx hash
+    Kernel-->>TxMode: { userOpHash, txHash }
+    TxMode-->>Hook: approve 成功
+    Hook->>API: POST /v1/usage-rights/purchase
+    API-->>Hook: { usageRightId }
+    Note over API,Chain: Fire-and-forget（非同期）
+    API-)Chain: UsageRight.mint(buyerWallet, ...)
     Hook-->>User: 購入完了表示
 ```
 
@@ -334,10 +383,10 @@ graph LR
 ```mermaid
 flowchart TD
     A([ユーザー]) --> B["/venues で店舗を選ぶ"]
-    B --> C["套餐を選択・購入モーダル表示"]
+    B --> C["プランを選択・購入モーダル表示"]
     C --> D{"JPYC 残高\n十分？"}
     D -- いいえ --> E["残高不足エラー"]
-    D -- はい --> F["JPYC.approve(Settlement合約)"]
+    D -- はい --> F["useTxMode.approveJPYC(Settlement)<br/>AA or wagmi を自動選択"]
     F --> G["POST /v1/usage-rights/purchase"]
     G --> H[("DB: UsageRight\nstatus=ACTIVE")]
     H --> I["🔗 非同期: UsageRight.mint"]
@@ -384,13 +433,15 @@ flowchart TD
         M1 --> M2
     end
 
-    subgraph Buyer["買手フロー（wagmi 直接署名）"]
+    subgraph Buyer["買手フロー（useTxMode で AA / wagmi 自動選択）"]
         B1([買手]) --> B2["出品一覧から選択"]
-        B2 --> B3["🔗 JPYC.approve(Marketplace, price)"]
-        B3 --> B4["🔗 Marketplace.buyListing(listingId)"]
-        B4 --> B5[("チェーン: NFT 所有権移転\nJPYC 売手へ送金")]
-        B5 --> B6["Purchased イベント → Listener"]
-        B6 --> B7[("DB: UsageListing\nstatus=SOLD")]
+        B2 --> B3{"loginMethod?"}
+        B3 -- "wallet" --> B3W["🔗 wagmi: JPYC.approve\n→ Marketplace.buyListing"]
+        B3 -- "social(AA)" --> B3A["🔗 ZeroDev UserOp:\napprove + buyListing を単一 TX"]
+        B3W --> B4[("チェーン: NFT 所有権移転\nJPYC 売手へ送金")]
+        B3A --> B4
+        B4 --> B5["Purchased イベント → Listener"]
+        B5 --> B6[("DB: UsageListing\nstatus=SOLD")]
     end
 
     S6 --> M1

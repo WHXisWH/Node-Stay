@@ -110,11 +110,36 @@ async function getWalletClient(provider: Web3AuthProvider) {
   });
 }
 
+async function resolveAddress(provider: Web3AuthProvider): Promise<`0x${string}`> {
+  const walletClient = await getWalletClient(provider);
+  const addresses = await walletClient.getAddresses();
+  const address = addresses[0];
+  if (!address) {
+    throw new Error('ウォレットアドレスを取得できませんでした。');
+  }
+  return address;
+}
+
 /**
  * Web3AuthService
  * ソーシャルログインのウォレット接続と再利用 provider を管理する。
  */
 class Web3AuthServiceClass {
+  /**
+   * 既存セッションを使って provider を静かに復元する。
+   * ここでは connect() を呼ばないため、未接続時にログインモーダルは開かない。
+   */
+  async restoreSocialSession(): Promise<{ address: `0x${string}` } | null> {
+    const web3auth = await getWeb3Auth();
+    if (!web3auth.connected || !web3auth.provider) {
+      connectedProvider = null;
+      return null;
+    }
+    connectedProvider = web3auth.provider;
+    const address = await resolveAddress(web3auth.provider);
+    return { address };
+  }
+
   async connectSocial(): Promise<{ address: `0x${string}`; signMessage: (message: string) => Promise<string> }> {
     let provider: Web3AuthProvider | null = null;
 
@@ -134,16 +159,12 @@ class Web3AuthServiceClass {
       throw new Error('ソーシャルログインの接続に失敗しました。');
     }
     connectedProvider = provider;
-
     const walletClient = await getWalletClient(provider);
-    const addresses = await walletClient.getAddresses();
-    const address = addresses[0];
-    if (!address) {
-      throw new Error('ウォレットアドレスを取得できませんでした。');
-    }
+    const address = await resolveAddress(provider);
 
     return {
       address,
+      // viem WalletClient で署名を実行し、SIWE へ渡す
       signMessage: async (message: string) => walletClient.signMessage({ account: address, message }),
     };
   }
@@ -157,6 +178,16 @@ class Web3AuthServiceClass {
    * AA UserOperation 送信時に使用する。
    */
   getConnectedProvider(): Web3AuthProvider | null {
+    return connectedProvider;
+  }
+
+  /**
+   * 接続済み provider を返す。
+   * メモリ上に無い場合は Web3Auth セッションからの静的復元を 1 回試みる。
+   */
+  async getOrRestoreProvider(): Promise<Web3AuthProvider | null> {
+    if (connectedProvider) return connectedProvider;
+    await this.restoreSocialSession();
     return connectedProvider;
   }
 }

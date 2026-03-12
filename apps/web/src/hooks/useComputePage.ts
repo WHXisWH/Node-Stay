@@ -66,7 +66,15 @@ export function useComputePage(): UseComputePageReturn {
       'inputUri' in raw &&
       'outputUri' in raw
         ? (raw as { command: string; inputUri: string; outputUri: string; envVars?: Record<string, string>; dockerImage?: string })
-        : { command: '', inputUri: '', outputUri: '' };
+        : {
+            command: `echo "NodeStay ${params.taskType} job"`,
+            inputUri: `ipfs://nodestay/compute/${params.nodeId}/input`,
+            outputUri: `ipfs://nodestay/compute/${params.nodeId}/output`,
+            envVars: {
+              ESTIMATED_HOURS: String(params.estimatedHours),
+              TASK_TYPE: params.taskType,
+            },
+          };
     await ComputeService.submitJob({
       nodeId: params.nodeId,
       estimatedHours: params.estimatedHours,

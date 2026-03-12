@@ -94,16 +94,16 @@ function HeroSection() {
             </Link>
           </div>
 
-          {/* 統計数値（モック） */}
+          {/* 主要機能 */}
           <div className="flex flex-wrap gap-8 mt-16 pt-8 border-t border-white/10">
             {[
-              { value: '2,400+', label: '対応店舗数' },
-              { value: '1.2M', label: '月間取引額 (JPYC)' },
-              { value: '< 2s', label: '決済完了時間' },
-            ].map((stat) => (
-              <div key={stat.label}>
-                <div className="text-2xl font-extrabold text-white">{stat.value}</div>
-                <div className="text-sm text-slate-400 mt-0.5">{stat.label}</div>
+              { title: '利用権の購入', detail: '店舗プランをオンチェーン管理' },
+              { title: 'QRチェックイン', detail: '利用開始をスムーズに実行' },
+              { title: 'JPYC決済', detail: '購入と精算を一元化' },
+            ].map((item) => (
+              <div key={item.title}>
+                <div className="text-lg font-bold text-white">{item.title}</div>
+                <div className="text-sm text-slate-400 mt-0.5">{item.detail}</div>
               </div>
             ))}
           </div>

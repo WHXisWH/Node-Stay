@@ -5,6 +5,8 @@
 import Link from 'next/link';
 import { usePassesPage } from '../../hooks';
 import type { UsageRight } from '../../hooks/usePassesPage';
+import { useUserState } from '../../hooks/useUserState';
+import { CheckinQrCode } from '../../components/CheckinQrCode';
 
 // ===== ステータスラベル定義（View 表示用） =====
 const STATUS_CONFIG: Record<
@@ -96,27 +98,13 @@ function QrModal({ right, onClose }: { right: UsageRight; onClose: () => void })
           </button>
         </div>
 
-        {/* QRコードプレースホルダー */}
-        <div className="w-48 h-48 mx-auto mb-4 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-2">
-          <svg
-            width="40"
-            height="40"
-            fill="none"
-            stroke="#CBD5E1"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            {/* QRコードアイコン */}
-            <rect x="3" y="3" width="8" height="8" />
-            <rect x="13" y="3" width="8" height="8" />
-            <rect x="3" y="13" width="8" height="8" />
-            <rect x="15" y="15" width="2" height="2" />
-            <rect x="18" y="15" width="2" height="2" />
-            <rect x="15" y="18" width="2" height="2" />
-            <rect x="18" y="18" width="2" height="2" />
-          </svg>
-          <span className="text-xs text-slate-400">QR 生成中...</span>
+        {/* QRコード */}
+        <div className="w-48 h-48 mx-auto mb-4 flex items-center justify-center">
+          <CheckinQrCode
+            usageRightId={right.usageRightId}
+            venueId={right.venueId || right.usageRightId}
+            size={176}
+          />
         </div>
 
         {/* 利用権情報 */}
@@ -233,7 +221,7 @@ function UsageRightCard({ right, onShowQr }: { right: UsageRight; onShowQr: (r: 
           {/* 譲渡ボタン（譲渡可能な場合のみ） */}
           {right.transferable && right.status === 'ACTIVE' && (
             <Link
-              href={`/usage-rights/${right.usageRightId}/transfer`}
+              href={`/usage-rights/${right.usageRightId}?modal=transfer`}
               className="btn-secondary py-2.5 px-3 text-sm"
             >
               <svg
@@ -266,6 +254,7 @@ const FILTER_TABS: { key: 'all' | 'active' | 'history'; label: string }[] = [
 // ===== ページコンポーネント =====
 export default function UsageRightsPage() {
   const { filtered, activeFilter, setActiveFilter, activeCount, qrRight, setQrRight } = usePassesPage();
+  const { balance, isAuthenticated } = useUserState();
 
   return (
     <>
@@ -348,18 +337,22 @@ export default function UsageRightsPage() {
             <div>
               <h2 className="text-sm font-bold text-slate-700 mb-1">JPYC 残高</h2>
               <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-extrabold text-slate-900">—</span>
+                <span className="text-2xl font-extrabold text-slate-900">
+                  {isAuthenticated && balance !== null
+                    ? (balance / 100).toLocaleString('ja-JP')
+                    : '—'}
+                </span>
                 <span className="text-sm text-slate-400">JPYC</span>
               </div>
-              <p className="text-xs text-slate-400 mt-1">ウォレット接続後に表示されます</p>
-            </div>
-            <div className="flex gap-3">
-              <button className="btn-secondary py-2 px-4 text-sm">
-                チャージ
-              </button>
-              <button className="btn-primary py-2 px-4 text-sm">
-                ウォレット接続
-              </button>
+              {!isAuthenticated && (
+                <p className="text-xs text-slate-400 mt-1">ログイン後に残高を表示します</p>
+              )}
+              {isAuthenticated && balance === null && (
+                <p className="text-xs text-slate-400 mt-1">残高を取得中です</p>
+              )}
+              {isAuthenticated && balance !== null && (
+                <p className="text-xs text-slate-400 mt-1">最新残高を表示しています</p>
+              )}
             </div>
           </div>
         </div>

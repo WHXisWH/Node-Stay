@@ -1,7 +1,7 @@
 const items = [
-  { label: '販売事業者', value: 'Node Stay 運営事務局（正式情報は公開準備中）' },
-  { label: '運営責任者', value: '公開準備中' },
-  { label: '所在地', value: '公開準備中' },
+  { label: '販売事業者', value: 'Node Stay 運営事務局' },
+  { label: '運営責任者', value: 'お問い合わせ窓口にてご案内します' },
+  { label: '所在地', value: 'お問い合わせ窓口にてご案内します' },
   { label: 'お問い合わせ先', value: 'support@nodestay.example' },
   { label: '販売価格', value: '各商品ページに税込価格を表示' },
   { label: '支払方法', value: 'JPYC（Polygon）' },

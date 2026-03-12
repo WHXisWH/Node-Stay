@@ -21,10 +21,11 @@ vi.mock('../stores/compute.store', () => ({
 }));
 
 const mockRefresh = vi.fn();
+const mockSubmitJob = vi.fn();
 vi.mock('../services/compute.service', () => ({
   ComputeService: {
     refresh: () => mockRefresh(),
-    submitJob: vi.fn(),
+    submitJob: (...args: unknown[]) => mockSubmitJob(...args),
     cancelJob: vi.fn(),
   },
 }));
@@ -32,6 +33,7 @@ vi.mock('../services/compute.service', () => ({
 describe('useComputePage', () => {
   beforeEach(() => {
     mockRefresh.mockReset();
+    mockSubmitJob.mockReset();
   });
 
   it('returns expected shape and calls refresh on mount', async () => {
@@ -71,5 +73,27 @@ describe('useComputePage', () => {
     });
 
     expect(mockRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('submitJob が taskSpec 未指定時でも有効な既定値を送る', async () => {
+    mockSubmitJob.mockResolvedValue(undefined);
+    const { result } = renderHook(() => useComputePage());
+
+    await act(async () => {
+      await result.current.submitJob({
+        nodeId: 'node-1',
+        estimatedHours: 2,
+        taskType: 'GENERAL',
+      });
+    });
+
+    expect(mockSubmitJob).toHaveBeenCalledTimes(1);
+    const payload = mockSubmitJob.mock.calls[0][0] as {
+      taskSpec: { command: string; inputUri: string; outputUri: string; envVars?: Record<string, string> };
+    };
+    expect(payload.taskSpec.command.length).toBeGreaterThan(0);
+    expect(payload.taskSpec.inputUri.length).toBeGreaterThan(0);
+    expect(payload.taskSpec.outputUri.length).toBeGreaterThan(0);
+    expect(payload.taskSpec.envVars?.TASK_TYPE).toBe('GENERAL');
   });
 });

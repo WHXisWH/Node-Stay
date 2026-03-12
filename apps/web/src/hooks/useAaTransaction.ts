@@ -39,7 +39,7 @@ export function useAaTransaction(): UseAaTransactionReturn {
     setTxHash(null);
 
     try {
-      const provider = Web3AuthService.getConnectedProvider();
+      const provider = await Web3AuthService.getOrRestoreProvider();
       if (!provider) {
         throw new Error('ソーシャルウォレットのセッションが見つかりません。再ログインしてください。');
       }

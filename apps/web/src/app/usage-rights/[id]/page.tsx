@@ -3,10 +3,12 @@
 // 利用権詳細ページ（View 層：useUsageRightDetail の戻り値を表示のみ）
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
+import { useEffect } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useUsageRightDetail } from '../../../hooks';
 import type { UsageRightDetail } from '../../../hooks/useUsageRightDetail';
 import type { UsageRightStatus } from '../../../hooks/usePassesPage';
+import { CheckinQrCode } from '../../../components/CheckinQrCode';
 
 // ===== ステータス設定 =====
 const STATUS_CONFIG: Record<UsageRightStatus, { label: string; dotColor: string; badgeClass: string }> = {
@@ -69,15 +71,12 @@ function QrModal({ right, onClose }: { right: UsageRightDetail; onClose: () => v
           </button>
         </div>
 
-        {/* QR プレースホルダー */}
-        <div className="w-52 h-52 mx-auto mb-5 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-2">
-          <svg width="48" height="48" fill="none" stroke="#CBD5E1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="10" height="10" /><rect x="17" y="3" width="10" height="10" />
-            <rect x="3" y="17" width="10" height="10" /><rect x="19" y="19" width="3" height="3" />
-            <rect x="23" y="19" width="3" height="3" /><rect x="19" y="23" width="3" height="3" />
-            <rect x="23" y="23" width="3" height="3" />
-          </svg>
-          <span className="text-xs text-slate-400">QR 生成中...</span>
+        <div className="w-52 h-52 mx-auto mb-5 flex items-center justify-center">
+          <CheckinQrCode
+            usageRightId={right.usageRightId}
+            venueId={right.venueId || right.usageRightId}
+            size={208}
+          />
         </div>
 
         {/* 利用権情報 */}
@@ -198,6 +197,9 @@ function InfoRow({ label, children }: { label: string; children: React.ReactNode
 export default function UsageRightDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params.id as string | undefined;
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const transferModalRequested = searchParams.get('modal') === 'transfer';
 
   const {
     right,
@@ -211,6 +213,24 @@ export default function UsageRightDetailPage() {
     cancelling, cancelError, cancelSuccess,
     handleCancel,
   } = useUsageRightDetail(id);
+
+  const canTransferByState = !!right
+    && right.status === 'ACTIVE'
+    && right.transferable
+    && right.transferCount < right.maxTransferCount;
+
+  useEffect(() => {
+    if (transferModalRequested && canTransferByState) {
+      setShowTransfer(true);
+    }
+  }, [transferModalRequested, canTransferByState, setShowTransfer]);
+
+  const closeTransferModal = () => {
+    setShowTransfer(false);
+    if (transferModalRequested && id) {
+      router.replace(`/usage-rights/${id}`, { scroll: false });
+    }
+  };
 
   // ローディング
   if (loading) {
@@ -509,7 +529,7 @@ export default function UsageRightDetailPage() {
           input={transferInput}
           onChangeInput={setTransferInput}
           onSubmit={handleTransfer}
-          onClose={() => setShowTransfer(false)}
+          onClose={closeTransferModal}
           transferring={transferring}
           error={transferError}
         />

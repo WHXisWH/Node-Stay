@@ -63,6 +63,28 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
   const { disconnect } = useDisconnect();
   const { signIn, signInWithCustomSigner, signOut, authError } = useAuth(wagmiAddress ?? null);
 
+  /**
+   * ソーシャル認証済み状態でページ再読み込みされた場合、
+   * 揮発メモリに残らない provider / アドレスを静かに復元する。
+   */
+  useEffect(() => {
+    if (!isAuthenticated || loginMethod !== 'social') return;
+
+    let active = true;
+    void (async () => {
+      try {
+        const restored = await Web3AuthService.restoreSocialSession();
+        if (!active || !restored?.address) return;
+        setSocialWalletAddress(restored.address);
+      } catch {
+        // 復元失敗時は未処理。購入時に getOrRestoreProvider が再試行し、
+        // それでも不可なら「再ログインしてください」を返す。
+      }
+    })();
+
+    return () => { active = false; };
+  }, [isAuthenticated, loginMethod, setSocialWalletAddress]);
+
   /** 認証完了時: モーダルを閉じてリダイレクト処理 */
   useEffect(() => {
     if (!isAuthenticated) return;

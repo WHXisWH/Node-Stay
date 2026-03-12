@@ -63,6 +63,35 @@ function toComputeNode(item: {
   };
 }
 
+function fallbackTaskSpec(input: {
+  nodeId: string;
+  taskType: string;
+  estimatedHours: number;
+  taskSpec?: {
+    command?: string;
+    inputUri?: string;
+    outputUri?: string;
+    envVars?: Record<string, string>;
+    dockerImage?: string;
+  } | null;
+}) {
+  const command = input.taskSpec?.command?.trim() || `echo "NodeStay ${input.taskType} job"`;
+  const inputUri = input.taskSpec?.inputUri?.trim() || `ipfs://nodestay/compute/${input.nodeId}/input`;
+  const outputUri = input.taskSpec?.outputUri?.trim() || `ipfs://nodestay/compute/${input.nodeId}/output`;
+
+  return {
+    command,
+    inputUri,
+    outputUri,
+    envVars: {
+      ESTIMATED_HOURS: String(input.estimatedHours),
+      TASK_TYPE: input.taskType,
+      ...(input.taskSpec?.envVars ?? {}),
+    },
+    dockerImage: input.taskSpec?.dockerImage,
+  };
+}
+
 export const ComputeService = {
   setTaskFilter(taskFilter: TaskFilter) {
     setComputeStore({ taskFilter });
@@ -105,7 +134,12 @@ export const ComputeService = {
     const { bookingNodeId } = getComputeStore();
     setComputeStore({ submitting: true, error: null });
     try {
-      const taskSpec = params.taskSpec ?? { command: '', inputUri: '', outputUri: '', envVars: {} };
+      const taskSpec = fallbackTaskSpec({
+        nodeId: params.nodeId,
+        estimatedHours: params.estimatedHours,
+        taskType: params.taskType,
+        taskSpec: params.taskSpec,
+      });
       const res = await c.submitComputeJob({
         requesterId: params.requesterId ?? 'current-user',
         taskType: params.taskType,
