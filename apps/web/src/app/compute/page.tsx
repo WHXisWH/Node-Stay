@@ -5,6 +5,8 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useComputePage } from '../../hooks';
+import { useJPYCTransfer } from '../../hooks/useJPYC';
+import { CONTRACT_ADDRESSES } from '../../services/config';
 import type { ComputeNode, ComputeJob, TaskType } from '../../models/compute.model';
 import type { NodeStatus, JobStatus } from '../../models/compute.model';
 
@@ -207,8 +209,6 @@ function JobSubmitModal({
 
   // 合計金額の計算
   const totalMinor = node.pricePerHourMinor * hours;
-  // デポジット（合計の20%）
-  const depositMinor = Math.floor(totalMinor * 0.2);
 
   return (
     <div
@@ -302,21 +302,20 @@ function JobSubmitModal({
             <span className="font-semibold">{hours} 時間</span>
           </div>
           <div className="flex justify-between text-sm text-slate-500">
-            <span>デポジット（タスク保証金 20%）</span>
-            <span>{formatJPYC(depositMinor)} JPYC</span>
+            <span>決済方法</span>
+            <span>JPYC オンチェーン送金</span>
           </div>
           <div className="border-t border-slate-200 pt-2 flex justify-between items-center">
-            <span className="font-bold text-slate-800">合計（凍結額）</span>
+            <span className="font-bold text-slate-800">合計支払い額</span>
             <span className="text-xl font-extrabold text-brand-700">
-              {formatJPYC(totalMinor + depositMinor)} JPYC
+              {formatJPYC(totalMinor)} JPYC
             </span>
           </div>
         </div>
 
         {/* 注意書き */}
         <p className="text-xs text-slate-400 mb-5 leading-relaxed">
-          ※ ジョブ完了後、実行時間に応じて精算されます。
-          ユーザー着席によるノード中断時は別ノードへ自動マイグレーションされます。
+          ※ 送信時に JPYC を算力権コントラクトへ支払い、支払い tx を検証後にジョブを作成します。
         </p>
 
         {/* ボタン */}
@@ -426,10 +425,29 @@ export default function ComputePage() {
     setAvailableOnly,
     submitJob,
   } = useComputePage();
+  const { transferJpyc, isTransferring, isConfirming } = useJPYCTransfer();
 
-  const handleSubmitJob = (hours: number, taskType: TaskType) => {
+  const handleSubmitJob = async (hours: number, taskType: TaskType) => {
     if (!bookingNode) return;
-    return submitJob({ nodeId: bookingNode.nodeId, estimatedHours: hours, taskType });
+    try {
+      const computeRight = CONTRACT_ADDRESSES.computeRight as `0x${string}`;
+      if (!computeRight || !computeRight.startsWith('0x')) {
+        throw new Error('NEXT_PUBLIC_COMPUTE_RIGHT_ADDRESS が未設定です');
+      }
+
+      const totalMinor = bookingNode.pricePerHourMinor * hours;
+      const totalJpyc = (totalMinor / 100).toFixed(2);
+      const paymentTxHash = await transferJpyc(computeRight, totalJpyc);
+
+      await submitJob({
+        nodeId: bookingNode.nodeId,
+        estimatedHours: hours,
+        taskType,
+        paymentTxHash,
+      });
+    } catch {
+      // エラー文言は compute.store 側に保存され、画面バナーで表示される
+    }
   };
 
   return (
@@ -730,7 +748,7 @@ export default function ComputePage() {
           node={bookingNode}
           onClose={closeBooking}
           onSubmit={handleSubmitJob}
-          submitting={submitting}
+          submitting={submitting || isTransferring || isConfirming}
         />
       )}
     </>

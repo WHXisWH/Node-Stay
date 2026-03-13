@@ -51,25 +51,41 @@ export function useMerchantCompute(): UseMerchantComputeReturn {
       setVenueName(venue.name);
       setCurrentVenueId(venue.venueId);
 
-      const machines = await client.listMachines({ venueId: venue.venueId });
+      const nodes = await client.listComputeNodes();
+      const venueNodes = nodes.filter((n) => n.venueId === venue.venueId);
       setNodes(
-        machines.map((m) => ({
-          nodeId: m.id,
-          seatId: m.machineId ?? '',
-          seatLabel: `${m.machineClass} - ${(m.machineId ?? '').slice(0, 8)}`,
+        venueNodes.map((n) => {
+          const row = n as typeof n & {
+            machineClass?: string | null;
+            machineId?: string | null;
+            gpu?: string | null;
+            cpu?: string | null;
+            ramGb?: number | null;
+            maxDurationMinutes?: number | null;
+          };
+          const machineClass = row.machineClass ?? 'COMPUTE';
+          const machineId = row.machineId ?? '';
+          const maxBookingHours =
+            row.maxDurationMinutes && row.maxDurationMinutes > 0
+              ? Math.max(1, Math.floor(row.maxDurationMinutes / 60))
+              : 8;
+
+          return {
+          nodeId: n.nodeId,
+          seatId: n.seatId,
+          seatLabel: `${machineClass} - ${(machineId || n.seatId).slice(0, 8)}`,
           specs: {
-            cpuModel: m.cpu ?? '',
+            cpuModel: row.cpu ?? '',
             cpuCores: 0,
-            gpuModel: m.gpu ?? '',
+            gpuModel: row.gpu ?? '',
             vram: 0,
-            ram: m.ramGb ?? 0,
+            ram: row.ramGb ?? 0,
           },
-          status: toUiStatus(m.status),
-          enabled: m.status === 'ACTIVE',
-          // 価格は API に存在しないため 0 を表示し、編集値のみ反映する。
-          pricePerHourMinor: 0,
+          status: n.status,
+          enabled: n.status !== 'OFFLINE',
+          pricePerHourMinor: n.pricePerHourMinor,
           minBookingHours: 1,
-          maxBookingHours: 8,
+          maxBookingHours,
           supportedTasks: ['GENERAL'],
           availableWindows: [],
           earnings: {
@@ -78,7 +94,8 @@ export function useMerchantCompute(): UseMerchantComputeReturn {
             completedJobs: 0,
             uptimePercent: 0,
           },
-        })),
+        };
+        }),
       );
     } catch {
       setNodes([]);

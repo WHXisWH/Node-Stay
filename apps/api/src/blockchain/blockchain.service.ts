@@ -117,6 +117,16 @@ export class BlockchainService implements OnModuleInit {
         process.env.MACHINE_REGISTRY_ADDRESS,
         this._signer.address,
       );
+      await this.assertContractOperator(
+        'ComputeRight',
+        process.env.COMPUTE_RIGHT_ADDRESS,
+        this._signer.address,
+      );
+      await this.assertContractOperator(
+        'RevenueRight',
+        process.env.REVENUE_RIGHT_ADDRESS,
+        this._signer.address,
+      );
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       this.logger.error(`ブロックチェーン初期化に失敗しました: ${msg}`);

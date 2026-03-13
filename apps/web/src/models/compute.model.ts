@@ -68,6 +68,7 @@ export interface SubmitJobInput {
   nodeId: string;
   estimatedHours: number;
   taskType: string;
+  paymentTxHash?: string;
   taskSpec: {
     command: string;
     inputUri: string;

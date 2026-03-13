@@ -23,11 +23,15 @@ const STATUS_CONFIG: Record<UsageRightStatus, { label: string; dotColor: string;
 
 // ===== ユーティリティ =====
 function formatJPYC(minor: number) {
-  return (minor / 100).toLocaleString('ja-JP');
+  const value = Number.isFinite(minor) ? minor : 0;
+  return (value / 100).toLocaleString('ja-JP');
 }
 
 function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleString('ja-JP', {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString('ja-JP', {
     year: 'numeric', month: 'numeric', day: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
@@ -258,6 +262,11 @@ export default function UsageRightDetailPage() {
   const canTransfer = isActive && right.transferable && right.transferCount < right.maxTransferCount;
   const canCancel = right.status === 'ACTIVE' || right.status === 'PENDING';
   const isFinished = right.status === 'CONSUMED' || right.status === 'EXPIRED' || right.status === 'TRANSFERRED';
+  const expiresAtMs = new Date(right.expiresAt).getTime();
+  const isExpiredByDate = Number.isFinite(expiresAtMs) && expiresAtMs < Date.now();
+  const progressPercent = right.planDurationMinutes > 0
+    ? Math.min(100, (right.remainingMinutes / right.planDurationMinutes) * 100)
+    : 0;
 
   return (
     <>
@@ -415,7 +424,7 @@ export default function UsageRightDetailPage() {
                 <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-gradient-to-r from-brand-500 to-brand-400 rounded-full"
-                    style={{ width: `${Math.min(100, (right.remainingMinutes / right.planDurationMinutes) * 100)}%` }}
+                    style={{ width: `${progressPercent}%` }}
                   />
                 </div>
                 <p className="text-xs text-slate-400 mt-2">
@@ -446,7 +455,7 @@ export default function UsageRightDetailPage() {
               </InfoRow>
               <InfoRow label="購入日時">{formatDateTime(right.purchasedAt)}</InfoRow>
               <InfoRow label="有効期限">
-                <span className={new Date(right.expiresAt) < new Date() ? 'text-red-500' : ''}>
+                <span className={isExpiredByDate ? 'text-red-500' : ''}>
                   {formatDateTime(right.expiresAt)}
                 </span>
               </InfoRow>

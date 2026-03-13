@@ -3,9 +3,12 @@ import { z } from 'zod';
 import { FeatureFlagsService } from '../services/featureFlags.service';
 import { ComputeService } from '../services/compute.service';
 import { Public } from '../decorators/public.decorator';
+import { CurrentUser, type AuthenticatedUser } from '../decorators/current-user.decorator';
 
 const SubmitJobBody = z.object({
-  requesterId: z.string().min(1),
+  requesterId: z.string().min(1).optional(),
+  nodeId: z.string().min(1),
+  estimatedHours: z.number().int().min(1),
   taskType: z.string().min(1),
   taskSpec: z.object({
     command: z.string().min(1),
@@ -14,6 +17,7 @@ const SubmitJobBody = z.object({
     envVars: z.record(z.string()).optional(),
     dockerImage: z.string().optional(),
   }),
+  paymentTxHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/).optional(),
 });
 
 @Controller('/v1/compute')
@@ -35,16 +39,19 @@ export class ComputeController {
   }
 
   @Post('/jobs')
-  async submit(@Body() body: unknown) {
+  async submit(@CurrentUser() user: AuthenticatedUser, @Body() body: unknown) {
     if (!this.flags.computeMarketEnabled()) {
       throw new HttpException({ message: 'コンピュート市場は無効です' }, HttpStatus.NOT_IMPLEMENTED);
     }
-    if (!this.flags.computeOnchainWriteEnabled()) {
-      this.logger.warn('[compute.submit] onchain write disabled');
+    if (!this.flags.computeOnchainWriteEnabled() && !this.flags.strictOnchainModeEnabled()) {
+      this.logger.warn('[compute.submit] onchain write disabled (strict=false)');
       throw new HttpException(
         { message: 'コンピュート購入はオンチェーン実装が未完了のため停止中です' },
         HttpStatus.NOT_IMPLEMENTED,
       );
+    }
+    if (!this.flags.computeOnchainWriteEnabled() && this.flags.strictOnchainModeEnabled()) {
+      this.logger.warn('[compute.submit] ENABLE_COMPUTE_ONCHAIN_WRITE=false だが strict=true のためオンチェーン処理を継続');
     }
 
     const parsed = SubmitJobBody.safeParse(body);
@@ -53,11 +60,20 @@ export class ComputeController {
     }
 
     const job = await this.compute.submitJob({
-      buyerUserId: parsed.data.requesterId,
+      requesterAddress: user.address,
+      requesterId: parsed.data.requesterId,
+      nodeId: parsed.data.nodeId,
+      estimatedHours: parsed.data.estimatedHours,
       jobType: parsed.data.taskType,
       schedulerRef: JSON.stringify(parsed.data.taskSpec),
+      paymentTxHash: parsed.data.paymentTxHash ?? null,
     });
-    return { jobId: job.id };
+    return {
+      jobId: job.id,
+      computeRightId: job.computeRightId,
+      onchainTokenId: job.onchainTokenId,
+      onchainTxHash: job.onchainTxHash,
+    };
   }
 
   @Get('/jobs/:jobId')
@@ -75,7 +91,7 @@ export class ComputeController {
     if (!this.flags.computeMarketEnabled()) {
       throw new HttpException({ message: 'コンピュート市場は無効です' }, HttpStatus.NOT_IMPLEMENTED);
     }
-    if (!this.flags.computeOnchainWriteEnabled()) {
+    if (!this.flags.computeOnchainWriteEnabled() && !this.flags.strictOnchainModeEnabled()) {
       throw new HttpException(
         { message: 'コンピュート購入はオンチェーン実装が未完了のため停止中です' },
         HttpStatus.NOT_IMPLEMENTED,

@@ -40,15 +40,40 @@ export function useUserState(): UseUserStateReturn {
   const walletAddress         = useUserStore((s) => s.walletAddress);
   const connectedWalletAddress = useUserStore((s) => s.connectedWalletAddress);
   const socialWalletAddress   = useUserStore((s) => s.socialWalletAddress);
+  const jwt                   = useUserStore((s) => s.jwt);
   const isAuthenticated       = useUserStore((s) => s.isAuthenticated);
   const loginMethod           = useUserStore((s) => s.loginMethod);
 
   useWalletSync();
 
   useEffect(() => {
-    if (!isAuthenticated) return;
-    UserService.getBalance().catch(() => {});
-  }, [isAuthenticated]);
+    if (!isAuthenticated || !jwt) return;
+    let cancelled = false;
+
+    const sleep = (ms: number) => new Promise<void>((resolve) => {
+      globalThis.setTimeout(resolve, ms);
+    });
+
+    const loadBalanceWithRetry = async () => {
+      const retryWaitMs = [0, 1200, 2500];
+      for (const waitMs of retryWaitMs) {
+        if (cancelled) return;
+        if (waitMs > 0) await sleep(waitMs);
+        if (cancelled) return;
+        try {
+          await UserService.getBalance();
+          return;
+        } catch {
+          // 次のリトライへ
+        }
+      }
+    };
+
+    void loadBalanceWithRetry();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, jwt]);
 
   // ログイン方法に応じて表示用アドレスを切り替える
   const displayAddress: `0x${string}` | null = useMemo(() => {

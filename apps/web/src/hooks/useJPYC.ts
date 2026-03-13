@@ -3,6 +3,7 @@
 /**
  * useJPYCBalance — JPYC ERC-20 オンチェーン残高を取得するフック
  * useJPYCApprove — JPYC の approve トランザクションを送信するフック
+ * useJPYCTransfer — JPYC の transfer トランザクションを送信するフック
  *
  * wagmi の useReadContract / useWriteContract を使用。
  * コントラクトアドレスは config.ts の CONTRACT_ADDRESSES.jpycToken。
@@ -37,6 +38,13 @@ const ERC20_ABI = [
     type: 'function',
     stateMutability: 'nonpayable',
     inputs:  [{ name: 'spender', type: 'address' }, { name: 'amount', type: 'uint256' }],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    name: 'transfer',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs:  [{ name: 'to', type: 'address' }, { name: 'amount', type: 'uint256' }],
     outputs: [{ name: '', type: 'bool' }],
   },
 ] as const;
@@ -124,5 +132,49 @@ export function useJPYCApprove(): UseJPYCApproveReturn {
     isConfirming,
     isApproved,
     approveError,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// useJPYCTransfer
+// ---------------------------------------------------------------------------
+
+export interface UseJPYCTransferReturn {
+  /** transfer トランザクションを送信する（amountJPYC は "123.45" 形式の文字列） */
+  transferJpyc: (to: `0x${string}`, amountJPYC: string) => Promise<`0x${string}`>;
+  isTransferring: boolean;
+  isConfirming: boolean;
+  isTransferred: boolean;
+  transferError: string | null;
+}
+
+export function useJPYCTransfer(): UseJPYCTransferReturn {
+  const config = useConfig();
+  const { writeContractAsync, data: txHash, isPending, error: writeError } = useWriteContract();
+
+  const { isLoading: isConfirming, isSuccess: isTransferred } = useWaitForTransactionReceipt({
+    hash: txHash,
+  });
+
+  const transferJpyc = async (to: `0x${string}`, amountJPYC: string) => {
+    const amount = parseUnits(amountJPYC, 18);
+    const hash = await writeContractAsync({
+      address: JPYC_ADDRESS,
+      abi: ERC20_ABI,
+      functionName: 'transfer',
+      args: [to, amount],
+    });
+    await waitForTransactionReceipt(config, { hash });
+    return hash;
+  };
+
+  const transferError = writeError ? writeError.message : null;
+
+  return {
+    transferJpyc,
+    isTransferring: isPending,
+    isConfirming,
+    isTransferred,
+    transferError,
   };
 }

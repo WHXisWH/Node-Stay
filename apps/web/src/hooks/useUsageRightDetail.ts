@@ -61,8 +61,41 @@ export interface UseUsageRightDetailReturn {
 
 // API レスポンスの status 文字列を UsageRightStatus に正規化する
 function toUsageRightStatus(s: string): UsageRightStatus {
-  const valid: UsageRightStatus[] = ['ACTIVE', 'IN_USE', 'CONSUMED', 'EXPIRED', 'TRANSFERRED', 'PENDING'];
-  return valid.includes(s as UsageRightStatus) ? (s as UsageRightStatus) : 'EXPIRED';
+  switch (s) {
+    case 'ACTIVE':
+    case 'MINTED':
+      return 'ACTIVE';
+    case 'IN_USE':
+    case 'CHECKED_IN':
+    case 'LOCKED':
+      return 'IN_USE';
+    case 'LISTED':
+      return 'LISTED';
+    case 'CONSUMED':
+      return 'CONSUMED';
+    case 'TRANSFERRED':
+      return 'TRANSFERRED';
+    case 'PENDING':
+      return 'PENDING';
+    case 'EXPIRED':
+    case 'CANCELLED':
+    default:
+      return 'EXPIRED';
+  }
+}
+
+function toValidIso(value: string | null | undefined): string {
+  if (!value) return '';
+  const t = new Date(value).getTime();
+  if (Number.isNaN(t)) return '';
+  return new Date(t).toISOString();
+}
+
+function toMinorFromPriceJpyc(priceJpyc: string | undefined): number {
+  if (!priceJpyc) return 0;
+  const n = Number(priceJpyc);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.round(n * 100));
 }
 
 export function useUsageRightDetail(id: string | undefined): UseUsageRightDetailReturn {
@@ -98,27 +131,57 @@ export function useUsageRightDetail(id: string | undefined): UseUsageRightDetail
     try {
       const client = createNodeStayClient();
       const data = await client.getUsageRight(id);
+      const raw = data as typeof data & {
+        startAt?: string | null;
+        endAt?: string | null;
+        remainingMinutes?: number;
+        maxTransferCount?: number;
+        usageProduct?: {
+          productName?: string;
+          priceJpyc?: string;
+          venueId?: string;
+          venue?: { id?: string; name?: string; address?: string | null } | null;
+        };
+      };
+
+      const usageProduct = data.usageProduct;
+      const durationMinutes = Number.isFinite(usageProduct.durationMinutes)
+        ? Math.max(0, usageProduct.durationMinutes)
+        : 0;
+      const purchasedAt = toValidIso(raw.startAt);
+      const expiresAt = toValidIso(raw.endAt);
+      const remainingByEndAt = expiresAt
+        ? Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 60000))
+        : durationMinutes;
+      const remainingMinutes = typeof raw.remainingMinutes === 'number' && Number.isFinite(raw.remainingMinutes)
+        ? Math.max(0, raw.remainingMinutes)
+        : remainingByEndAt;
+      const maxTransferCount = typeof raw.maxTransferCount === 'number' && Number.isFinite(raw.maxTransferCount)
+        ? Math.max(0, raw.maxTransferCount)
+        : (data.transferable ? Math.max(1, data.transferCount + 1) : 0);
+      const basePriceMinor = Number.isFinite(usageProduct.priceMinor)
+        ? Math.max(0, usageProduct.priceMinor)
+        : toMinorFromPriceJpyc(raw.usageProduct?.priceJpyc);
 
       const mapped: UsageRightDetail = {
         usageRightId: data.id,
         onchainTokenId: data.onchainTokenId,
-        planName: data.usageProduct.name,
-        planDurationMinutes: data.usageProduct.durationMinutes,
-        // venue 情報は usageProduct から取得できないため空文字で代替する
-        venueName: '',
-        venueId: data.usageProduct.id,
-        venueAddress: '',
+        planName: usageProduct.name || raw.usageProduct?.productName || '利用権',
+        planDurationMinutes: durationMinutes,
+        venueName: raw.usageProduct?.venue?.name || '店舗',
+        venueId: raw.usageProduct?.venueId || raw.usageProduct?.venue?.id || usageProduct.id,
+        venueAddress: raw.usageProduct?.venue?.address || '',
         status: toUsageRightStatus(data.status),
-        remainingMinutes: data.usageProduct.durationMinutes,
-        purchasedAt: '',
-        expiresAt: '',
+        remainingMinutes,
+        purchasedAt,
+        expiresAt,
         transferCutoff: data.transferCutoff,
         transferable: data.transferable,
         transferCount: data.transferCount,
-        maxTransferCount: 0,
-        depositAmountMinor: data.usageProduct.depositRequiredMinor,
+        maxTransferCount,
+        depositAmountMinor: Math.max(0, usageProduct.depositRequiredMinor ?? 0),
         depositStatus: 'NONE',
-        basePriceMinor: data.usageProduct.priceMinor,
+        basePriceMinor,
         txHash: data.onchainTxHash,
       };
 

@@ -24,15 +24,21 @@ export const TaskSpecSchema = z.object({
   dockerImage: z.string().min(1).optional(),
 });
 export const SubmitJobBodySchema = z.object({
-  requesterId: z.string().min(1),
+  requesterId: z.string().min(1).optional(),
+  nodeId: z.string().min(1),
+  estimatedHours: z.number().int().min(1),
   taskType: z.string().min(1),
   taskSpec: TaskSpecSchema,
+  paymentTxHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/).optional(),
 });
 export type SubmitJobBody = z.infer<typeof SubmitJobBodySchema>;
 
 /** POST /v1/compute/jobs response */
 export const SubmitJobResponseSchema = z.object({
   jobId: z.string().min(1),
+  computeRightId: z.string().min(1),
+  onchainTokenId: z.string().min(1),
+  onchainTxHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
 });
 export type SubmitJobResponse = z.infer<typeof SubmitJobResponseSchema>;
 

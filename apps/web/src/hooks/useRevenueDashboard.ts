@@ -7,7 +7,8 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useWriteContract } from 'wagmi';
+import { waitForTransactionReceipt } from '@wagmi/core';
+import { useConfig, useWriteContract } from 'wagmi';
 import { createNodeStayClient } from '../services/nodestay';
 import { useUserStore } from '../stores/user.store';
 
@@ -16,9 +17,7 @@ import { useUserStore } from '../stores/user.store';
 // ---------------------------------------------------------------------------
 
 // RevenueRight コントラクトアドレス（環境変数 or フォールバック）
-const REVENUE_RIGHT_ADDRESS = (
-  process.env.NEXT_PUBLIC_REVENUE_RIGHT_ADDRESS ?? '0xAa355b440C6850f2551F40e0064e2FB16362e11E'
-) as `0x${string}`;
+const REVENUE_RIGHT_ADDRESS = (process.env.NEXT_PUBLIC_REVENUE_RIGHT_ADDRESS ?? '') as `0x${string}`;
 
 // claim(programId, allocationId) ABI
 const REVENUE_RIGHT_ABI = [
@@ -126,12 +125,15 @@ function formatPeriodLabel(startAt: string, endAt: string): string {
 
 // allocationId をキーに { programId, allocationId } を保持する型
 interface ClaimTarget {
-  programId: string;
+  onchainProgramId: string;
+  onchainAllocationId: string;
   allocationId: string;
+  revenueRightId: string;
 }
 
 export function useRevenueDashboard(): UseRevenueDashboardReturn {
   const walletAddress = useUserStore((s) => s.walletAddress);
+  const config = useConfig();
   const { writeContractAsync } = useWriteContract();
 
   const [rights, setRights] = useState<RevenueRight[]>([]);
@@ -182,11 +184,17 @@ export function useRevenueDashboard(): UseRevenueDashboardReturn {
       const rightProgramMap = new Map<string, string>();
       const programRightIds = new Map<string, string[]>();
       const programMyUnitSum = new Map<string, bigint>();
+      const programOnchainId = new Map<string, string>();
 
       for (const right of apiRights) {
         const amount = toBigInt(right.amount1155, 1n);
         rightAmountMap.set(right.id, amount);
         rightProgramMap.set(right.id, right.revenueProgramId);
+        if (right.onchainProgramId && /^\d+$/.test(right.onchainProgramId)) {
+          programOnchainId.set(right.revenueProgramId, right.onchainProgramId);
+        } else if (right.onchainTokenId && /^\d+$/.test(right.onchainTokenId)) {
+          programOnchainId.set(right.revenueProgramId, right.onchainTokenId);
+        }
 
         const ids = programRightIds.get(right.revenueProgramId) ?? [];
         ids.push(right.id);
@@ -253,8 +261,22 @@ export function useRevenueDashboard(): UseRevenueDashboardReturn {
 
         for (const alloc of allocs) {
           const unclaimedRightIds = rightIds.filter((rid) => !claimKeySet.has(`${rid}:${alloc.id}`));
-          // on-chain claim ターゲットとして programId と allocationId を保持する
-          claimTargetsNext[alloc.id] = { programId, allocationId: alloc.id };
+          const selectedRightId = unclaimedRightIds[0];
+          const onchainProgramId = programOnchainId.get(programId);
+          const onchainAllocationId = alloc.onchainAllocationId;
+          if (
+            selectedRightId &&
+            onchainProgramId &&
+            onchainAllocationId &&
+            /^\d+$/.test(onchainAllocationId)
+          ) {
+            claimTargetsNext[alloc.id] = {
+              onchainProgramId,
+              onchainAllocationId,
+              allocationId: alloc.id,
+              revenueRightId: selectedRightId,
+            };
+          }
 
           const totalAmount = toBigInt(alloc.totalAmountJpyc, 0n);
           const myAmount = (totalAmount * myUnits) / total;
@@ -310,12 +332,23 @@ export function useRevenueDashboard(): UseRevenueDashboardReturn {
     setClaimSuccess(null);
 
     try {
+      if (!REVENUE_RIGHT_ADDRESS || !REVENUE_RIGHT_ADDRESS.startsWith('0x')) return;
+
       // コントラクトの claim(programId, allocationId) を直接呼び出す（on-chain）
-      await writeContractAsync({
+      const txHash = await writeContractAsync({
         address: REVENUE_RIGHT_ADDRESS,
         abi: REVENUE_RIGHT_ABI,
         functionName: 'claim',
-        args: [BigInt(target.programId), BigInt(target.allocationId)],
+        args: [BigInt(target.onchainProgramId), BigInt(target.onchainAllocationId)],
+      });
+      await waitForTransactionReceipt(config, { hash: txHash });
+
+      const client = createNodeStayClient();
+      await client.claimRevenue({
+        revenueRightId: target.revenueRightId,
+        allocationId: target.allocationId,
+        walletAddress,
+        onchainTxHash: txHash,
       });
 
       // claim 成功後にダッシュボードを再取得して状態を同期する
@@ -332,7 +365,7 @@ export function useRevenueDashboard(): UseRevenueDashboardReturn {
     } finally {
       setClaimingId(null);
     }
-  }, [walletAddress, claimTargets, writeContractAsync, loadDashboard]);
+  }, [walletAddress, claimTargets, writeContractAsync, loadDashboard, config]);
 
   return {
     rights,

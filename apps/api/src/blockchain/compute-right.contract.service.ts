@@ -150,4 +150,39 @@ export class ComputeRightContractService {
       return null;
     }
   }
+
+  /**
+   * 算力権のオンチェーン状態を取得する
+   * @returns status: 0=ISSUED, 1=RESERVED, 2=RUNNING, 3=COMPLETED, 4=INTERRUPTED, 5=FAILED, 6=EXPIRED
+   */
+  async getComputeData(tokenId: bigint): Promise<{
+    nodeId: string;
+    durationSeconds: bigint;
+    priceJpyc: bigint;
+    startedAt: bigint;
+    endedAt: bigint;
+    status: number;
+  } | null> {
+    const c = this.contract;
+    if (!c) {
+      this.logger.debug('ComputeRight: コントラクト未設定。getComputeData をスキップ。');
+      return null;
+    }
+
+    try {
+      const data = await c.getComputeData(tokenId);
+      return {
+        nodeId: data.nodeId,
+        durationSeconds: data.durationSeconds,
+        priceJpyc: data.priceJpyc,
+        startedAt: data.startedAt,
+        endedAt: data.endedAt,
+        status: Number(data.status),
+      };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.error(`getComputeData 失敗 (tokenId=${tokenId}): ${msg}`);
+      return null;
+    }
+  }
 }

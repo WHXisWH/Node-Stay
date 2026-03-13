@@ -32,6 +32,10 @@ const CreateDisputeBody = z.object({
   referenceId: z.string().min(1),
 });
 
+const EnableComputeBody = z.object({
+  enable: z.boolean().default(true),
+});
+
 @Controller('/v1/merchant')
 export class MerchantController {
   constructor(
@@ -85,6 +89,38 @@ export class MerchantController {
     });
 
     return { productId: product.id };
+  }
+
+  @Post('/venues/:venueId/compute/enable')
+  async enableCompute(
+    @CurrentUser() _user: AuthenticatedUser,
+    @Param('venueId') venueId: string,
+    @Body() body: unknown,
+  ) {
+    const parsed = EnableComputeBody.safeParse(body);
+    if (!parsed.success) {
+      throw new HttpException({ message: '入力が不正です' }, HttpStatus.BAD_REQUEST);
+    }
+
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: venueId },
+      select: { id: true },
+    });
+    if (!venue) {
+      throw new HttpException({ message: '店舗が見つかりません' }, HttpStatus.NOT_FOUND);
+    }
+
+    // compute 一括有効化/停止は機械ステータスで管理する
+    const nextStatus = parsed.data.enable ? 'ACTIVE' : 'REGISTERED';
+    await this.prisma.machine.updateMany({
+      where: { venueId },
+      data: { status: nextStatus },
+    });
+
+    return {
+      venueId,
+      computeEnabled: parsed.data.enable,
+    };
   }
 
   @Post('/disputes')

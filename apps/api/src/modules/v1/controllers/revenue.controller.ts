@@ -17,6 +17,7 @@ import { Public } from '../decorators/public.decorator';
 const ClaimBody = z.object({
   revenueRightId: z.string().min(1, '収益権IDは必須です'),
   allocationId:   z.string().min(1, 'アロケーションIDは必須です'),
+  onchainTxHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/).optional(),
 });
 
 const BatchAllocateBody = z.object({
@@ -154,7 +155,7 @@ export class RevenueController {
     return this.revenue.claimRevenue(
       parsed.data.revenueRightId,
       parsed.data.allocationId,
-      { walletAddress: user.address },
+      { walletAddress: user.address, onchainTxHash: parsed.data.onchainTxHash },
     );
   }
 

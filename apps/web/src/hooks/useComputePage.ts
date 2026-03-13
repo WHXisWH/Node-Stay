@@ -30,7 +30,7 @@ export interface UseComputePageReturn {
   closeBooking: () => void;
   setTaskFilter: (f: TaskFilter) => void;
   setAvailableOnly: (v: boolean) => void;
-  submitJob: (params: { nodeId: string; estimatedHours: number; taskType: TaskType; taskSpec?: unknown }) => Promise<void>;
+  submitJob: (params: { nodeId: string; estimatedHours: number; taskType: TaskType; taskSpec?: unknown; paymentTxHash?: string }) => Promise<void>;
   cancelJob: (jobId: string) => Promise<void>;
 }
 
@@ -57,7 +57,7 @@ export function useComputePage(): UseComputePageReturn {
     return list;
   }, [store.nodes, store.availableOnly, store.taskFilter]);
 
-  const submitJob = async (params: { nodeId: string; estimatedHours: number; taskType: TaskType; taskSpec?: unknown }) => {
+  const submitJob = async (params: { nodeId: string; estimatedHours: number; taskType: TaskType; taskSpec?: unknown; paymentTxHash?: string }) => {
     const raw = params.taskSpec;
     const taskSpec =
       raw &&
@@ -80,6 +80,7 @@ export function useComputePage(): UseComputePageReturn {
       estimatedHours: params.estimatedHours,
       taskType: params.taskType,
       taskSpec,
+      paymentTxHash: params.paymentTxHash,
     });
   };
 

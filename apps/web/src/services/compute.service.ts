@@ -6,6 +6,7 @@
 import type { NodeStayClient } from '@nodestay/api-client';
 import type { ComputeNode, ComputeJob, SubmitJobInput } from '../models/compute.model';
 import { setComputeStore, getComputeStore } from '../stores/compute.store';
+import { useUserStore } from '../stores/user.store';
 import type { TaskFilter } from '../stores/compute.store';
 import { createNodeStayClient } from './nodestay';
 
@@ -140,8 +141,14 @@ export const ComputeService = {
         taskType: params.taskType,
         taskSpec: params.taskSpec,
       });
+      const requesterWallet = useUserStore.getState().walletAddress;
+      if (!requesterWallet) {
+        throw new Error('ウォレット未接続のためジョブ送信できません');
+      }
       const res = await c.submitComputeJob({
-        requesterId: params.requesterId ?? 'current-user',
+        requesterId: params.requesterId ?? requesterWallet,
+        nodeId: params.nodeId,
+        estimatedHours: params.estimatedHours,
         taskType: params.taskType,
         taskSpec: {
           command: taskSpec.command,
@@ -150,11 +157,12 @@ export const ComputeService = {
           envVars: taskSpec.envVars ?? {},
           dockerImage: taskSpec.dockerImage,
         },
+        paymentTxHash: params.paymentTxHash,
       });
       const node = getComputeStore().nodes.find((n) => n.nodeId === bookingNodeId);
       const newJob: ComputeJob = {
         jobId: res.jobId,
-        requesterId: params.requesterId ?? 'current-user',
+        requesterId: params.requesterId ?? requesterWallet,
         nodeId: params.nodeId,
         taskType: params.taskType as ComputeJob['taskType'],
         taskSpec,

@@ -26,7 +26,7 @@ services:
       - key: ENABLE_COMPUTE_MARKET
         value: "true"
       - key: ENABLE_COMPUTE_ONCHAIN_WRITE
-        value: "false"
+        value: "true"
       - key: ENABLE_TRANSFER_MARKET
         value: "true"
       - key: STRICT_ONCHAIN_MODE
@@ -68,7 +68,7 @@ services:
       - key: ENABLE_COMPUTE_MARKET
         value: "true"
       - key: ENABLE_COMPUTE_ONCHAIN_WRITE
-        value: "false"
+        value: "true"
       - key: ENABLE_TRANSFER_MARKET
         value: "true"
       - key: STRICT_ONCHAIN_MODE
@@ -110,7 +110,7 @@ services:
       - key: ENABLE_COMPUTE_MARKET
         value: "true"
       - key: ENABLE_COMPUTE_ONCHAIN_WRITE
-        value: "false"
+        value: "true"
       - key: ENABLE_TRANSFER_MARKET
         value: "true"
       - key: STRICT_ONCHAIN_MODE

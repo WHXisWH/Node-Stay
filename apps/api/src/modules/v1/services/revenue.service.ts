@@ -1,7 +1,9 @@
-import { Injectable, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { ethers } from 'ethers';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { RevenueRightContractService } from '../../../blockchain/revenue-right.contract.service';
+import { BlockchainService } from '../../../blockchain/blockchain.service';
+import { FeatureFlagsService } from './featureFlags.service';
 
 // -----------------------------------------------------------------------
 // 収益プログラムサービス
@@ -11,9 +13,17 @@ import { RevenueRightContractService } from '../../../blockchain/revenue-right.c
 
 @Injectable()
 export class RevenueService {
+  private readonly logger = new Logger(RevenueService.name);
+  private readonly revenueIface = new ethers.Interface([
+    'event AllocationRecorded(uint256 indexed allocationId, uint256 indexed programId, uint256 totalAmountJpyc)',
+    'event Claimed(address indexed holder, uint256 indexed programId, uint256 indexed allocationId, uint256 amountJpyc)',
+  ]);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly revenueContract: RevenueRightContractService,
+    private readonly blockchain: BlockchainService,
+    private readonly flags: FeatureFlagsService,
   ) {}
 
   // -----------------------------------------------------------------------
@@ -50,6 +60,112 @@ export class RevenueService {
     } catch {
       return 0n;
     }
+  }
+
+  private requireWalletAddress(wallet: string | null | undefined, label: string): string {
+    const normalized = wallet?.trim() ?? '';
+    if (!normalized || !ethers.isAddress(normalized) || normalized === ethers.ZeroAddress) {
+      throw new HttpException(
+        { message: `${label}のウォレットアドレスが不正です` },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    return ethers.getAddress(normalized);
+  }
+
+  private async getUserWalletAddress(userId: string, label: string): Promise<string> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { walletAddress: true },
+    });
+    return this.requireWalletAddress(user?.walletAddress, label);
+  }
+
+  private async resolveOnchainAllocationIdFromTxHash(txHash: string | null | undefined): Promise<string | null> {
+    const normalizedTx = txHash?.trim() ?? '';
+    if (!/^0x[0-9a-fA-F]{64}$/.test(normalizedTx)) return null;
+
+    const revenueAddress = process.env.REVENUE_RIGHT_ADDRESS?.trim();
+    if (!revenueAddress || !ethers.isAddress(revenueAddress)) return null;
+    if (!this.blockchain.isEnabled) return null;
+
+    const receipt = await this.blockchain.provider.getTransactionReceipt(normalizedTx);
+    if (!receipt || receipt.status !== 1) return null;
+
+    for (const log of receipt.logs) {
+      if (log.address.toLowerCase() !== revenueAddress.toLowerCase()) continue;
+      let parsed: ethers.LogDescription | null = null;
+      try {
+        parsed = this.revenueIface.parseLog(log);
+      } catch {
+        parsed = null;
+      }
+      if (!parsed || parsed.name !== 'AllocationRecorded') continue;
+      return (parsed.args.allocationId as bigint).toString();
+    }
+
+    return null;
+  }
+
+  private async verifyClaimTxOrThrow(input: {
+    onchainTxHash: string;
+    holderWallet: string;
+    expectedProgramId: string | null;
+    expectedAllocationId: string | null;
+  }): Promise<{ claimedAmountJpyc: string }> {
+    if (!this.blockchain.isEnabled) {
+      throw new HttpException(
+        { message: 'ブロックチェーン接続が無効です' },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+
+    const revenueAddress = process.env.REVENUE_RIGHT_ADDRESS?.trim();
+    if (!revenueAddress || !ethers.isAddress(revenueAddress)) {
+      throw new HttpException(
+        { message: 'REVENUE_RIGHT_ADDRESSが未設定です' },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+
+    const receipt = await this.blockchain.provider.getTransactionReceipt(input.onchainTxHash);
+    if (!receipt || receipt.status !== 1) {
+      throw new HttpException(
+        { message: 'オンチェーンクレーム取引の確認に失敗しました' },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+
+    const expectedHolder = input.holderWallet.toLowerCase();
+    const expectedProgramId = input.expectedProgramId;
+    const expectedAllocationId = input.expectedAllocationId;
+
+    for (const log of receipt.logs) {
+      if (log.address.toLowerCase() !== revenueAddress.toLowerCase()) continue;
+      let parsed: ethers.LogDescription | null = null;
+      try {
+        parsed = this.revenueIface.parseLog(log);
+      } catch {
+        parsed = null;
+      }
+      if (!parsed || parsed.name !== 'Claimed') continue;
+
+      const holder = String(parsed.args.holder).toLowerCase();
+      const programId = (parsed.args.programId as bigint).toString();
+      const allocationId = (parsed.args.allocationId as bigint).toString();
+      const amountJpyc = (parsed.args.amountJpyc as bigint).toString();
+
+      if (holder !== expectedHolder) continue;
+      if (expectedProgramId && programId !== expectedProgramId) continue;
+      if (expectedAllocationId && allocationId !== expectedAllocationId) continue;
+
+      return { claimedAmountJpyc: amountJpyc };
+    }
+
+    throw new HttpException(
+      { message: 'Claimedイベントが確認できません' },
+      HttpStatus.UNPROCESSABLE_ENTITY,
+    );
   }
 
   async createProgramDraft(input: {
@@ -309,7 +425,7 @@ export class RevenueService {
     const userId = await this.resolveUserId(input);
     if (!userId) return [];
 
-    return this.prisma.revenueRight.findMany({
+    const rows = await this.prisma.revenueRight.findMany({
       where: { holderUserId: userId },
       include: {
         revenueProgram: {
@@ -325,16 +441,30 @@ export class RevenueService {
         },
       },
     });
+
+    return rows.map((row) => ({
+      ...row,
+      onchainProgramId: row.onchainTokenId,
+    }));
   }
 
   // -----------------------------------------------------------------------
   // 指定プログラムの配当アロケーション一覧を取得する
   // -----------------------------------------------------------------------
   async listAllocations(programId: string) {
-    return this.prisma.revenueAllocation.findMany({
+    const rows = await this.prisma.revenueAllocation.findMany({
       where: { revenueProgramId: programId },
       orderBy: { allocationPeriodStart: 'desc' },
     });
+
+    const withOnchainIds = await Promise.all(
+      rows.map(async (row) => ({
+        ...row,
+        onchainAllocationId: await this.resolveOnchainAllocationIdFromTxHash(row.allocationTxHash),
+      })),
+    );
+
+    return withOnchainIds;
   }
 
   // -----------------------------------------------------------------------
@@ -365,7 +495,7 @@ export class RevenueService {
   async claimRevenue(
     revenueRightId: string,
     allocationId: string,
-    input: { userId?: string; walletAddress?: string },
+    input: { userId?: string; walletAddress?: string; onchainTxHash?: string },
   ) {
     const userId = await this.resolveUserId(input);
     if (!userId) {
@@ -423,21 +553,55 @@ export class RevenueService {
       );
     }
 
-    // 按分計算: totalAmountJpyc × (amount1155 / totalSupply)
-    // totalSupply は amount1155 の総和を分母とする
-    const rightsInProgram = await this.prisma.revenueRight.findMany({
-      where: { revenueProgramId: revenueRight.revenueProgramId },
-      select: { amount1155: true },
-    });
-    const summed = rightsInProgram.reduce((acc, r) => {
-      return acc + BigInt(r.amount1155 ?? '1');
-    }, 0n);
-    const totalSupply = summed > 0n ? summed : 1n;
-    const rightAmount = BigInt(revenueRight.amount1155 ?? '1');
-    const totalAmount = BigInt(allocation.totalAmountJpyc);
+    if (this.flags.strictOnchainModeEnabled() && !input.onchainTxHash) {
+      throw new HttpException(
+        { message: 'オンチェーントランザクション（onchainTxHash）が必須です' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
 
-    // 整数除算でクレーム額を計算する（端数切り捨て）
-    const claimedAmount = (totalAmount * rightAmount) / totalSupply;
+    const holderWallet = await this.getUserWalletAddress(userId, '収益権保有者');
+    const expectedProgramId = revenueRight.onchainTokenId ?? null;
+    if (this.flags.strictOnchainModeEnabled() && !expectedProgramId) {
+      throw new HttpException(
+        { message: 'オンチェーンProgram IDが未設定です' },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    const expectedAllocationId = await this.resolveOnchainAllocationIdFromTxHash(allocation.allocationTxHash);
+
+    let claimedAmount = 0n;
+    let claimTxHash: string | null = null;
+
+    if (input.onchainTxHash) {
+      const verified = await this.verifyClaimTxOrThrow({
+        onchainTxHash: input.onchainTxHash,
+        holderWallet,
+        expectedProgramId,
+        expectedAllocationId,
+      });
+      claimedAmount = BigInt(verified.claimedAmountJpyc);
+      claimTxHash = input.onchainTxHash;
+      this.logger.log(
+        `[revenue.claim] verified onchain rightId=${revenueRightId} allocationId=${allocationId} txHash=${input.onchainTxHash} amount=${claimedAmount.toString()}`,
+      );
+    } else {
+      // strict=false の場合のみフォールバック計算を許可する。
+      const rightsInProgram = await this.prisma.revenueRight.findMany({
+        where: { revenueProgramId: revenueRight.revenueProgramId },
+        select: { amount1155: true },
+      });
+      const summed = rightsInProgram.reduce((acc, r) => {
+        return acc + BigInt(r.amount1155 ?? '1');
+      }, 0n);
+      const totalSupply = summed > 0n ? summed : 1n;
+      const rightAmount = BigInt(revenueRight.amount1155 ?? '1');
+      const totalAmount = BigInt(allocation.totalAmountJpyc);
+      claimedAmount = (totalAmount * rightAmount) / totalSupply;
+      this.logger.warn(
+        `[revenue.claim] onchainTxHash 未指定のためオフチェーン計算を使用 rightId=${revenueRightId} allocationId=${allocationId}`,
+      );
+    }
 
     // クレームレコードを作成する
     const claim = await this.prisma.revenueClaim.create({
@@ -445,7 +609,7 @@ export class RevenueService {
         revenueRightId,
         allocationId,
         claimedAmountJpyc: claimedAmount.toString(),
-        claimTxHash: null,
+        claimTxHash,
       },
     });
 

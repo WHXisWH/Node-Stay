@@ -302,13 +302,25 @@ export class NodeStayClient {
     onchainTxHash: string | null;
     transferable: boolean;
     transferCount: number;
+    maxTransferCount?: number;
     transferCutoff: string | null;
+    startAt?: string | null;
+    endAt?: string | null;
+    remainingMinutes?: number;
     usageProduct: {
       id: string;
       name: string;
+      productName?: string;
       durationMinutes: number;
       priceMinor: number;
+      priceJpyc?: string;
       depositRequiredMinor: number;
+      venueId?: string;
+      venue?: {
+        id?: string;
+        name?: string;
+        address?: string | null;
+      } | null;
     };
   }> {
     return await this.json(`/v1/usage-rights/${encodeURIComponent(id)}`);
@@ -645,6 +657,8 @@ export class NodeStayClient {
     id: string;
     revenueProgramId: string;
     holderUserId: string | null;
+    onchainTokenId: string | null;
+    onchainProgramId: string | null;
     amount1155: string | null;
     status: string;
     revenueProgram: {
@@ -676,6 +690,8 @@ export class NodeStayClient {
     allocationPeriodStart: string;
     allocationPeriodEnd: string;
     totalAmountJpyc: string;
+    allocationTxHash: string | null;
+    onchainAllocationId: string | null;
     createdAt: string;
   }>> {
     return await this.json(`/v1/revenue/programs/${encodeURIComponent(programId)}/allocations`);
@@ -686,6 +702,7 @@ export class NodeStayClient {
     revenueRightId: string;
     allocationId: string;
     claimedAmountJpyc: string;
+    claimTxHash: string | null;
     claimedAt: string;
     revenueRight: { id: string; revenueProgramId: string };
     allocation: { id: string; revenueProgramId: string };
@@ -699,6 +716,7 @@ export class NodeStayClient {
   async claimRevenue(input: {
     revenueRightId: string;
     allocationId: string;
+    onchainTxHash?: string;
     userId?: string;
     walletAddress?: string;
   }): Promise<{
@@ -706,6 +724,7 @@ export class NodeStayClient {
     revenueRightId: string;
     allocationId: string;
     claimedAmountJpyc: string;
+    claimTxHash: string | null;
     claimedAt: string;
   }> {
     return await this.json('/v1/revenue/claim', {
