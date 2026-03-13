@@ -11,6 +11,8 @@ import { waitForTransactionReceipt } from '@wagmi/core';
 import { useConfig, useWriteContract } from 'wagmi';
 import { createNodeStayClient } from '../services/nodestay';
 import { useUserStore } from '../stores/user.store';
+import { useAaTransaction } from './useAaTransaction';
+import { encodeRevenueClaim } from '../services/aa/encodeMarketplaceCalls';
 
 // ---------------------------------------------------------------------------
 // Revenue Right コントラクト設定
@@ -133,8 +135,11 @@ interface ClaimTarget {
 
 export function useRevenueDashboard(): UseRevenueDashboardReturn {
   const walletAddress = useUserStore((s) => s.walletAddress);
+  const loginMethod = useUserStore((s) => s.loginMethod);
+  const isAaMode = loginMethod === 'social';
   const config = useConfig();
   const { writeContractAsync } = useWriteContract();
+  const { sendUserOp, error: aaError } = useAaTransaction();
 
   const [rights, setRights] = useState<RevenueRight[]>([]);
   const [allocations, setAllocations] = useState<Allocation[]>([]);
@@ -334,14 +339,29 @@ export function useRevenueDashboard(): UseRevenueDashboardReturn {
     try {
       if (!REVENUE_RIGHT_ADDRESS || !REVENUE_RIGHT_ADDRESS.startsWith('0x')) return;
 
-      // コントラクトの claim(programId, allocationId) を直接呼び出す（on-chain）
-      const txHash = await writeContractAsync({
-        address: REVENUE_RIGHT_ADDRESS,
-        abi: REVENUE_RIGHT_ABI,
-        functionName: 'claim',
-        args: [BigInt(target.onchainProgramId), BigInt(target.onchainAllocationId)],
-      });
-      await waitForTransactionReceipt(config, { hash: txHash });
+      let txHash: `0x${string}`;
+      if (isAaMode) {
+        const result = await sendUserOp([
+          {
+            to: REVENUE_RIGHT_ADDRESS,
+            data: encodeRevenueClaim(BigInt(target.onchainProgramId), BigInt(target.onchainAllocationId)),
+            value: 0n,
+          },
+        ]);
+        if (!result?.txHash) {
+          throw new Error(aaError ?? 'AA での claim トランザクション送信に失敗しました');
+        }
+        txHash = result.txHash;
+      } else {
+        // コントラクトの claim(programId, allocationId) を直接呼び出す（on-chain）
+        txHash = await writeContractAsync({
+          address: REVENUE_RIGHT_ADDRESS,
+          abi: REVENUE_RIGHT_ABI,
+          functionName: 'claim',
+          args: [BigInt(target.onchainProgramId), BigInt(target.onchainAllocationId)],
+        });
+        await waitForTransactionReceipt(config, { hash: txHash });
+      }
 
       const client = createNodeStayClient();
       await client.claimRevenue({
@@ -365,7 +385,7 @@ export function useRevenueDashboard(): UseRevenueDashboardReturn {
     } finally {
       setClaimingId(null);
     }
-  }, [walletAddress, claimTargets, writeContractAsync, loadDashboard, config]);
+  }, [walletAddress, claimTargets, isAaMode, sendUserOp, aaError, writeContractAsync, loadDashboard, config]);
 
   return {
     rights,

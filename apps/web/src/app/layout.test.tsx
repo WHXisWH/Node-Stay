@@ -6,6 +6,7 @@ import RootLayout from './layout';
 // next/navigation をモック化（Header が usePathname を使用するため）
 vi.mock('next/navigation', () => ({
   usePathname: () => '/',
+  useSearchParams: () => new URLSearchParams(),
   useRouter: () => ({
     replace: vi.fn(),
     push: vi.fn(),

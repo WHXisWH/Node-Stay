@@ -58,8 +58,9 @@ export function useMerchantCompute(): UseMerchantComputeReturn {
     setLoading(true);
     try {
       const client = createNodeStayClient();
-      const venues = await client.listVenues();
-      const venue = venues[0];
+      const merchantVenues = await client.listMyMerchantVenues().catch(() => []);
+      const venues = merchantVenues.length > 0 ? merchantVenues : await client.listVenues();
+      const venue = venues.find((v) => v.venueId === currentVenueId) ?? venues[0];
       if (!venue) {
         setVenueName('');
         setCurrentVenueId('');
@@ -121,7 +122,7 @@ export function useMerchantCompute(): UseMerchantComputeReturn {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [currentVenueId]);
 
   useEffect(() => {
     void loadNodes();
@@ -141,7 +142,8 @@ export function useMerchantCompute(): UseMerchantComputeReturn {
       let venueId = currentVenueId;
       if (!venueId) {
         const client = createNodeStayClient();
-        const venues = await client.listVenues();
+        const merchantVenues = await client.listMyMerchantVenues().catch(() => []);
+        const venues = merchantVenues.length > 0 ? merchantVenues : await client.listVenues();
         venueId = venues[0]?.venueId ?? '';
         if (venueId) setCurrentVenueId(venueId);
       }

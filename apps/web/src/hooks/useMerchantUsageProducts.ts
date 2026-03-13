@@ -77,7 +77,8 @@ export function useMerchantUsageProducts(): UseMerchantUsageProductsReturn {
     setLoading(true);
     try {
       const client = createNodeStayClient();
-      const venues = await client.listVenues();
+      const merchantVenues = await client.listMyMerchantVenues().catch(() => []);
+      const venues = merchantVenues.length > 0 ? merchantVenues : await client.listVenues();
       const venue = venues[0];
       if (!venue) {
         setProducts([]);
@@ -162,7 +163,8 @@ export function useMerchantUsageProducts(): UseMerchantUsageProductsReturn {
       const client = createNodeStayClient();
       let venueId = currentVenueId;
       if (!venueId) {
-        const venues = await client.listVenues();
+        const merchantVenues = await client.listMyMerchantVenues().catch(() => []);
+        const venues = merchantVenues.length > 0 ? merchantVenues : await client.listVenues();
         venueId = venues[0]?.venueId ?? '';
         if (venueId) setCurrentVenueId(venueId);
       }

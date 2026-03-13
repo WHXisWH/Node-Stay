@@ -34,6 +34,7 @@ export interface SessionSummary {
 }
 
 export interface UseMerchantDashboardReturn {
+  venueId: string;
   venueName: string;
   revenue: RevenueSnapshot;
   machines: MachineUtilization[];
@@ -60,6 +61,7 @@ const ZERO_SESSIONS: SessionSummary = {
 };
 
 export function useMerchantDashboard(): UseMerchantDashboardReturn {
+  const [venueId, setVenueId] = useState('');
   const [venueName, setVenueName] = useState('');
   const [machines, setMachines] = useState<MachineUtilization[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,11 +72,13 @@ export function useMerchantDashboard(): UseMerchantDashboardReturn {
     try {
       const client = createNodeStayClient();
 
-      // 最初の店舗情報を取得（デモ用シングル店舗前提）
-      const venues = await client.listVenues();
+      // 認証中の商家が所有する店舗を優先し、取得不可時のみ公開店舗一覧へフォールバックする
+      const merchantVenues = await client.listMyMerchantVenues().catch(() => []);
+      const venues = merchantVenues.length > 0 ? merchantVenues : await client.listVenues();
       const venue = venues[0];
       if (!venue) return;
 
+      setVenueId(venue.venueId);
       setVenueName(venue.name);
 
       // マシン一覧を実データで取得
@@ -103,6 +107,7 @@ export function useMerchantDashboard(): UseMerchantDashboardReturn {
   }, [loadDashboard]);
 
   return {
+    venueId,
     venueName,
     revenue: ZERO_REVENUE,
     machines,

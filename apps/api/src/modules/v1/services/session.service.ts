@@ -1,6 +1,13 @@
 import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { ethers } from 'ethers';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { SettlementContractService } from '../../../blockchain/settlement.contract.service';
+import { BlockchainService } from '../../../blockchain/blockchain.service';
+
+const ERC20_BALANCE_ALLOWANCE_ABI = [
+  'function balanceOf(address owner) view returns (uint256)',
+  'function allowance(address owner, address spender) view returns (uint256)',
+] as const;
 
 @Injectable()
 export class SessionService {
@@ -9,7 +16,92 @@ export class SessionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly settlement: SettlementContractService,
+    private readonly blockchain: BlockchainService,
   ) {}
+
+  private async readPayerTokenState(payerWallet: string): Promise<{
+    balanceWei: bigint;
+    allowanceWei: bigint;
+    settlementAddress: string;
+  } | null> {
+    if (!this.blockchain.isEnabled) return null;
+
+    const tokenAddressRaw = process.env.JPYC_TOKEN_ADDRESS?.trim();
+    const settlementAddressRaw = process.env.SETTLEMENT_ADDRESS?.trim();
+    if (!tokenAddressRaw || !settlementAddressRaw) return null;
+    if (!ethers.isAddress(tokenAddressRaw) || !ethers.isAddress(settlementAddressRaw)) return null;
+
+    const tokenAddress = ethers.getAddress(tokenAddressRaw);
+    const settlementAddress = ethers.getAddress(settlementAddressRaw);
+    const token = new ethers.Contract(
+      tokenAddress,
+      ERC20_BALANCE_ALLOWANCE_ABI,
+      this.blockchain.provider,
+    );
+
+    const [balance, allowance] = await Promise.all([
+      token.balanceOf(payerWallet),
+      token.allowance(payerWallet, settlementAddress),
+    ]);
+    const balanceWei = typeof balance === 'bigint' ? balance : BigInt(balance.toString());
+    const allowanceWei = typeof allowance === 'bigint' ? allowance : BigInt(allowance.toString());
+    return { balanceWei, allowanceWei, settlementAddress };
+  }
+
+  private async assertPayerCanSettle(payerWallet: string, grossAmountWei: bigint): Promise<void> {
+    const state = await this.readPayerTokenState(payerWallet);
+    if (!state) return;
+
+    if (state.allowanceWei < grossAmountWei) {
+      throw new HttpException(
+        {
+          message: 'JPYC の利用許可額が不足しています。決済前に再承認してください。',
+          errorCode: 'INSUFFICIENT_ALLOWANCE',
+          requiredWei: grossAmountWei.toString(),
+          allowanceWei: state.allowanceWei.toString(),
+          settlementAddress: state.settlementAddress,
+        },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+
+    if (state.balanceWei < grossAmountWei) {
+      throw new HttpException(
+        {
+          message: 'JPYC 残高が不足しています。',
+          errorCode: 'INSUFFICIENT_BALANCE',
+          requiredWei: grossAmountWei.toString(),
+          balanceWei: state.balanceWei.toString(),
+        },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+  }
+
+  private requireWalletAddress(wallet: string | null | undefined, label: string): string {
+    const normalized = wallet?.trim() ?? '';
+    if (!normalized || !ethers.isAddress(normalized) || normalized === ethers.ZeroAddress) {
+      throw new HttpException(
+        { message: `${label}ウォレットが未設定または不正です` },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    return ethers.getAddress(normalized);
+  }
+
+  private resolveFallbackTreasuryWallet(): string | null {
+    const candidates = [
+      process.env.PLATFORM_TREASURY,
+      process.env.PLATFORM_FEE_RECIPIENT,
+    ];
+    for (const candidate of candidates) {
+      const raw = candidate?.trim();
+      if (!raw) continue;
+      if (!ethers.isAddress(raw) || raw === ethers.ZeroAddress) continue;
+      return ethers.getAddress(raw);
+    }
+    return null;
+  }
 
   async startSession(input: {
     usageRightId: string;
@@ -78,20 +170,37 @@ export class SessionService {
     });
     if (!session) return null;
 
-    const payerWallet = session.user?.walletAddress?.trim() ?? '';
-    if (!payerWallet) {
-      throw new HttpException(
-        { message: '支払者ウォレットが未設定です' },
-        HttpStatus.UNPROCESSABLE_ENTITY,
-      );
-    }
-    const venueTreasury = session.venue?.merchant?.treasuryWallet?.trim() ?? '';
+    const payerWallet = this.requireWalletAddress(
+      session.user?.walletAddress,
+      '支払者',
+    );
+
+    let venueTreasury = session.venue?.merchant?.treasuryWallet?.trim() ?? '';
     if (!venueTreasury) {
-      throw new HttpException(
-        { message: '店舗受取ウォレットが未設定です' },
-        HttpStatus.UNPROCESSABLE_ENTITY,
+      const fallbackTreasury = this.resolveFallbackTreasuryWallet();
+      if (!fallbackTreasury) {
+        throw new HttpException(
+          { message: '店舗受取ウォレットが未設定です' },
+          HttpStatus.UNPROCESSABLE_ENTITY,
+        );
+      }
+      venueTreasury = fallbackTreasury;
+      this.logger.warn(
+        `[session.checkout] merchant treasury missing, fallback wallet is used venueId=${session.venueId} fallback=${fallbackTreasury}`,
       );
+
+      await this.prisma.merchant.updateMany({
+        where: {
+          id: session.venue.merchantId,
+          OR: [
+            { treasuryWallet: null },
+            { treasuryWallet: '' },
+          ],
+        },
+        data: { treasuryWallet: fallbackTreasury },
+      });
     }
+    venueTreasury = this.requireWalletAddress(venueTreasury, '店舗受取');
 
     const checkedOutAt = new Date();
     const usedMinutes = session.checkedInAt
@@ -105,6 +214,7 @@ export class SessionService {
       ? SettlementContractService.toReferenceId(session.machineId)
       : '0x0000000000000000000000000000000000000000000000000000000000000000';
     const grossAmountJpyc = BigInt(rawPrice) * 10n ** 18n;
+    await this.assertPayerCanSettle(payerWallet, grossAmountJpyc);
 
     this.logger.log(
       `[session.checkout] settle start sessionId=${sessionId} payer=${payerWallet} venueTreasury=${venueTreasury} amountWei=${grossAmountJpyc.toString()}`,

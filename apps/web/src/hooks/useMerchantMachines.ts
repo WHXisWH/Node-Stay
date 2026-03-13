@@ -53,8 +53,9 @@ export function useMerchantMachines(): UseMerchantMachinesReturn {
     try {
       const client = createNodeStayClient();
 
-      // 最初の店舗の venueId を取得（デモ用シングル店舗前提）
-      const venues = await client.listVenues();
+      // 認証中の商家が所有する店舗を優先し、取得不可時のみ公開店舗一覧へフォールバックする
+      const merchantVenues = await client.listMyMerchantVenues().catch(() => []);
+      const venues = merchantVenues.length > 0 ? merchantVenues : await client.listVenues();
       const venue = venues[0];
       if (!venue) return;
 

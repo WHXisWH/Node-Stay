@@ -24,14 +24,14 @@ export class MachineRegistryContractService {
 
   /**
    * 機器をオンチェーンに登録する
-   * @returns machineId（bytes32）と tx ハッシュ、失敗時は null
+   * @returns machineId（bytes32）/ tokenId / tx ハッシュ、失敗時は null
    */
   async registerMachine(input: {
     venueIdHash: string;   // bytes32 hex
     machineClass: number;  // MachineClass enum value
     specHash: string;      // bytes32 hex
     metadataUri: string;
-  }): Promise<{ machineId: string; txHash: string } | null> {
+  }): Promise<{ machineId: string; tokenId: string; txHash: string } | null> {
     const c = this.contract;
     if (!c) {
       this.logger.debug('MachineRegistry: コントラクト未設定。オンチェーン登録をスキップ。');
@@ -56,6 +56,7 @@ export class MachineRegistryContractService {
 
       return {
         machineId: event.args.machineId as string,
+        tokenId: String(event.args.tokenId),
         txHash:    receipt!.hash,
       };
     } catch (e: unknown) {

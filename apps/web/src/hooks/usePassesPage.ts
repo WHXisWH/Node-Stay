@@ -94,7 +94,10 @@ export function usePassesPage(): UsePassesPageReturn {
 
     const txHash = await listUsageRight(listingRight.onchainTokenId, price);
     if (!txHash) {
-      setListingLocalError(chainWriteError ?? '出品トランザクションの送信に失敗しました');
+      const detail = chainWriteError?.trim();
+      setListingLocalError(detail && !detail.includes('User rejected')
+        ? detail
+        : '出品トランザクションの送信に失敗しました');
       return;
     }
 
@@ -132,7 +135,12 @@ export function usePassesPage(): UsePassesPageReturn {
     try {
       const txHash = await chainCancelListing(cancelListingRight.onchainListingId);
       if (!txHash) {
-        setCancelListingError('出品取消トランザクションの送信に失敗しました');
+        const detail = chainWriteError?.trim();
+        setCancelListingError(
+          detail && !detail.includes('User rejected')
+            ? detail
+            : '出品取消トランザクションの送信に失敗しました',
+        );
         return;
       }
       await MarketplaceService.cancelListing(
@@ -147,7 +155,7 @@ export function usePassesPage(): UsePassesPageReturn {
     } finally {
       setCancelListingPending(false);
     }
-  }, [cancelListingRight, walletAddress, chainCancelListing, loadUsageRights]);
+  }, [cancelListingRight, walletAddress, chainCancelListing, loadUsageRights, chainWriteError]);
 
   const filtered = useMemo(() => {
     return usageRights.filter((r) => {

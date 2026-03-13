@@ -15,6 +15,25 @@ export interface NodeStayClientOptions {
 
 type JsonObject = Record<string, unknown>;
 
+export class NodeStayApiError extends Error {
+  readonly status: number;
+  readonly bodyText: string;
+  readonly bodyJson: unknown;
+
+  constructor(params: {
+    status: number;
+    bodyText: string;
+    bodyJson: unknown;
+    message: string;
+  }) {
+    super(params.message);
+    this.name = 'NodeStayApiError';
+    this.status = params.status;
+    this.bodyText = params.bodyText;
+    this.bodyJson = params.bodyJson;
+  }
+}
+
 export class NodeStayClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
@@ -28,7 +47,27 @@ export class NodeStayClient {
     const res = await this.fetchImpl(`${this.baseUrl}${path}`, init);
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      throw new Error(`APIエラー: ${res.status}${text ? ` - ${text}` : ''}`);
+      let bodyJson: unknown = null;
+      if (text) {
+        try {
+          bodyJson = JSON.parse(text);
+        } catch {
+          bodyJson = null;
+        }
+      }
+      const payloadMessage =
+        bodyJson &&
+        typeof bodyJson === 'object' &&
+        'message' in bodyJson &&
+        typeof (bodyJson as { message?: unknown }).message === 'string'
+          ? (bodyJson as { message: string }).message
+          : null;
+      throw new NodeStayApiError({
+        status: res.status,
+        bodyText: text,
+        bodyJson,
+        message: payloadMessage ?? `APIエラー: ${res.status}${text ? ` - ${text}` : ''}`,
+      });
     }
     return (await res.json()) as T;
   }
@@ -153,6 +192,69 @@ export class NodeStayClient {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(input),
+    });
+  }
+
+  async listMyMerchantVenues(): Promise<Array<{
+    venueId: string;
+    merchantId: string;
+    name: string;
+    address: string;
+    timezone: string;
+    latitude: number;
+    longitude: number;
+    totalSeats?: number;
+    treasuryWallet?: string | null;
+  }>> {
+    const rows = await this.json<Array<{
+      id: string;
+      merchantId: string;
+      name: string;
+      address: string | null;
+      timezone: string;
+      latitude: number | null;
+      longitude: number | null;
+      totalSeats?: number | null;
+      merchant?: {
+        treasuryWallet?: string | null;
+      } | null;
+    }>>('/v1/merchant/venues');
+
+    return rows.map((v) => ({
+      venueId: v.id,
+      merchantId: v.merchantId,
+      name: v.name,
+      address: v.address ?? '',
+      timezone: v.timezone,
+      latitude: v.latitude ?? 0,
+      longitude: v.longitude ?? 0,
+      totalSeats: v.totalSeats ?? undefined,
+      treasuryWallet: v.merchant?.treasuryWallet ?? null,
+    }));
+  }
+
+  async getVenueTreasuryWallet(venueId: string): Promise<{
+    venueId: string;
+    merchantId: string;
+    ownerUserId: string | null;
+    treasuryWallet: string | null;
+  }> {
+    return await this.json(`/v1/merchant/venues/${encodeURIComponent(venueId)}/treasury-wallet`);
+  }
+
+  async upsertVenueTreasuryWallet(
+    venueId: string,
+    treasuryWallet: string,
+  ): Promise<{
+    venueId: string;
+    merchantId: string;
+    ownerUserId: string | null;
+    treasuryWallet: string;
+  }> {
+    return await this.json(`/v1/merchant/venues/${encodeURIComponent(venueId)}/treasury-wallet`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ treasuryWallet }),
     });
   }
 

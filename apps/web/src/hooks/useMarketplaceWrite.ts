@@ -1,13 +1,22 @@
 'use client';
 
 // useMarketplaceWrite — マーケットプレイス書き込み操作 Hook
-// NodeStayMarketplace / NodeStayUsageRight / JPYC コントラクトを直接呼び出す
+// social ログイン時は AA、通常ログイン時は wagmi で送信する
 
 import { useState } from 'react';
 import { useWriteContract } from 'wagmi';
 import { parseUnits } from 'viem';
 
 import { CONTRACT_ADDRESSES } from '../services/config';
+import { useUserStore } from '../stores/user.store';
+import { useAaTransaction } from './useAaTransaction';
+import {
+  encodeBuyListing,
+  encodeCancelListing,
+  encodeCreateListing,
+  encodeJpycApprove,
+  encodeUsageRightApprove,
+} from '../services/aa/encodeMarketplaceCalls';
 
 const MARKETPLACE_ADDRESS = CONTRACT_ADDRESSES.marketplace as `0x${string}`;
 const USAGE_RIGHT_ADDRESS = CONTRACT_ADDRESSES.usageRight as `0x${string}`;
@@ -40,6 +49,9 @@ const MARKETPLACE_ABI = [
 
 export function useMarketplaceWrite() {
   const { writeContractAsync } = useWriteContract();
+  const loginMethod = useUserStore((s) => s.loginMethod);
+  const mode = loginMethod === 'social' ? 'aa' : 'wallet';
+  const { sendUserOp, error: aaError } = useAaTransaction();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,16 +60,36 @@ export function useMarketplaceWrite() {
     setPending(true);
     setError(null);
     try {
-      // Step 1: ERC-721 approve(marketplace, tokenId)
+      if (mode === 'aa') {
+        const result = await sendUserOp([
+          {
+            to: USAGE_RIGHT_ADDRESS,
+            data: encodeUsageRightApprove(MARKETPLACE_ADDRESS, BigInt(onchainTokenId)),
+            value: 0n,
+          },
+          {
+            to: MARKETPLACE_ADDRESS,
+            data: encodeCreateListing(BigInt(onchainTokenId), BigInt(priceJpycMinor)),
+            value: 0n,
+          },
+        ]);
+        if (!result) {
+          setError(aaError ?? 'AA での出品トランザクション送信に失敗しました');
+          return null;
+        }
+        return result.txHash;
+      }
+
+      // 手順1: ERC-721 approve(marketplace, tokenId)
       await writeContractAsync({
         address: USAGE_RIGHT_ADDRESS,
         abi: ERC721_APPROVE_ABI,
         functionName: 'approve',
         args: [MARKETPLACE_ADDRESS, BigInt(onchainTokenId)],
       });
-      // approve tx 待機は任意（同一ブロック内で可）
+      // approve トランザクションの確定待機は省略可能（同一ブロック想定）
 
-      // Step 2: createListing(tokenId, priceJpyc)
+      // 手順2: createListing(tokenId, priceJpyc)
       const priceWei = parseUnits(priceJpycMinor, 0); // minor は整数
       const listTx = await writeContractAsync({
         address: MARKETPLACE_ADDRESS,
@@ -80,7 +112,27 @@ export function useMarketplaceWrite() {
     setPending(true);
     setError(null);
     try {
-      // Step 1: JPYC approve(marketplace, price)
+      if (mode === 'aa') {
+        const result = await sendUserOp([
+          {
+            to: JPYC_ADDRESS,
+            data: encodeJpycApprove(MARKETPLACE_ADDRESS, parseUnits(priceJpycMinor, 0)),
+            value: 0n,
+          },
+          {
+            to: MARKETPLACE_ADDRESS,
+            data: encodeBuyListing(BigInt(onchainListingId)),
+            value: 0n,
+          },
+        ]);
+        if (!result) {
+          setError(aaError ?? 'AA での購入トランザクション送信に失敗しました');
+          return null;
+        }
+        return result.txHash;
+      }
+
+      // 手順1: JPYC approve(marketplace, price)
       await writeContractAsync({
         address: JPYC_ADDRESS,
         abi: ERC20_APPROVE_ABI,
@@ -88,7 +140,7 @@ export function useMarketplaceWrite() {
         args: [MARKETPLACE_ADDRESS, parseUnits(priceJpycMinor, 0)],
       });
 
-      // Step 2: buyListing(listingId)
+      // 手順2: buyListing(listingId)
       const buyTx = await writeContractAsync({
         address: MARKETPLACE_ADDRESS,
         abi: MARKETPLACE_ABI,
@@ -110,6 +162,21 @@ export function useMarketplaceWrite() {
     setPending(true);
     setError(null);
     try {
+      if (mode === 'aa') {
+        const result = await sendUserOp([
+          {
+            to: MARKETPLACE_ADDRESS,
+            data: encodeCancelListing(BigInt(onchainListingId)),
+            value: 0n,
+          },
+        ]);
+        if (!result) {
+          setError(aaError ?? 'AA での出品取消トランザクション送信に失敗しました');
+          return null;
+        }
+        return result.txHash;
+      }
+
       const tx = await writeContractAsync({
         address: MARKETPLACE_ADDRESS,
         abi: MARKETPLACE_ABI,

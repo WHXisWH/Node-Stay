@@ -3,8 +3,10 @@
 // 加盟店ダッシュボード（View 層：useMerchantDashboard の戻り値を表示のみ）
 
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { useMerchantDashboard } from '../../../hooks';
 import type { MachineUtilization } from '../../../hooks/useMerchantDashboard';
+import { createNodeStayClient } from '../../../services/nodestay';
 
 // ===== 金額フォーマット =====
 function formatJPYC(minor: number): string {
@@ -115,7 +117,12 @@ function KpiCard({
 
 // ===== ページコンポーネント =====
 export default function MerchantDashboardPage() {
-  const { venueName, revenue, machines, sessions, selectedPeriod, setSelectedPeriod } = useMerchantDashboard();
+  const { venueId, venueName, revenue, machines, sessions, selectedPeriod, setSelectedPeriod } = useMerchantDashboard();
+  const [treasuryWalletInput, setTreasuryWalletInput] = useState('');
+  const [treasuryLoading, setTreasuryLoading] = useState(false);
+  const [treasurySaving, setTreasurySaving] = useState(false);
+  const [treasuryError, setTreasuryError] = useState('');
+  const [treasuryNotice, setTreasuryNotice] = useState('');
 
   const periodRevenue =
     selectedPeriod === 'week'  ? revenue.thisMonthMinor / 4 :
@@ -126,6 +133,48 @@ export default function MerchantDashboardPage() {
     selectedPeriod === 'week'  ? '今週' :
     selectedPeriod === 'month' ? '今月' :
     '累計';
+
+  useEffect(() => {
+    if (!venueId) return;
+    const client = createNodeStayClient();
+    setTreasuryLoading(true);
+    setTreasuryError('');
+    setTreasuryNotice('');
+    void client.getVenueTreasuryWallet(venueId)
+      .then((res) => {
+        setTreasuryWalletInput(res.treasuryWallet ?? '');
+      })
+      .catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : '受取ウォレット情報の取得に失敗しました';
+        setTreasuryError(msg);
+      })
+      .finally(() => setTreasuryLoading(false));
+  }, [venueId]);
+
+  const handleSaveTreasuryWallet = async () => {
+    if (!venueId) return;
+    const wallet = treasuryWalletInput.trim();
+    if (!wallet) {
+      setTreasuryError('受取ウォレットアドレスを入力してください');
+      setTreasuryNotice('');
+      return;
+    }
+
+    setTreasurySaving(true);
+    setTreasuryError('');
+    setTreasuryNotice('');
+    try {
+      const client = createNodeStayClient();
+      const res = await client.upsertVenueTreasuryWallet(venueId, wallet);
+      setTreasuryWalletInput(res.treasuryWallet);
+      setTreasuryNotice('受取ウォレットを更新しました');
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : '受取ウォレットの更新に失敗しました';
+      setTreasuryError(msg);
+    } finally {
+      setTreasurySaving(false);
+    }
+  };
 
   return (
     <>
@@ -224,6 +273,40 @@ export default function MerchantDashboardPage() {
 
         {/* セッション統計 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* 受取ウォレット設定 */}
+          <div className="card p-6">
+            <h2 className="text-base font-bold text-slate-900 mb-3">受取ウォレット設定</h2>
+            <p className="text-sm text-slate-500 mb-4">
+              セッション決済の店舗取り分（JPYC）受取先です。未設定だと一部決済が失敗します。
+            </p>
+
+            <label className="text-xs font-semibold text-slate-500 mb-2 block">
+              受取ウォレット（Polygon）
+            </label>
+            <input
+              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-300"
+              placeholder="0x..."
+              value={treasuryWalletInput}
+              onChange={(e) => setTreasuryWalletInput(e.target.value)}
+              disabled={treasuryLoading || treasurySaving || !venueId}
+            />
+
+            <div className="mt-3 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleSaveTreasuryWallet}
+                disabled={treasuryLoading || treasurySaving || !venueId}
+                className="btn-primary py-2 px-4 text-sm disabled:opacity-50"
+              >
+                {treasurySaving ? '更新中...' : '受取先を保存'}
+              </button>
+              {treasuryLoading && <span className="text-xs text-slate-500">読み込み中...</span>}
+            </div>
+
+            {!!treasuryNotice && <p className="mt-3 text-sm text-emerald-600">{treasuryNotice}</p>}
+            {!!treasuryError && <p className="mt-3 text-sm text-red-600 break-all">{treasuryError}</p>}
+          </div>
+
           {/* 収益内訳 */}
           <div className="card p-6">
             <h2 className="text-base font-bold text-slate-900 mb-5">収益内訳（今月）</h2>

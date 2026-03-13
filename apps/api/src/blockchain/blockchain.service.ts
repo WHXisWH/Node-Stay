@@ -25,10 +25,13 @@ export class BlockchainService implements OnModuleInit {
     return process.env.STRICT_ONCHAIN_MODE !== 'false';
   }
 
-  private async readOperatorAddress(contractAddress: string): Promise<string | null> {
+  private async readOperatorAddress(
+    provider: ethers.JsonRpcProvider,
+    contractAddress: string,
+  ): Promise<string | null> {
     try {
       // operator() selector
-      const data = await this.provider.call({
+      const data = await provider.call({
         to: contractAddress,
         data: '0x570ca735',
       });
@@ -40,6 +43,7 @@ export class BlockchainService implements OnModuleInit {
   }
 
   private async assertContractOperator(
+    provider: ethers.JsonRpcProvider,
     label: string,
     address: string | undefined,
     expectedOperator: string,
@@ -56,13 +60,13 @@ export class BlockchainService implements OnModuleInit {
       throw new Error(`${label} address is invalid`);
     }
 
-    const code = await this.provider.getCode(address);
+    const code = await provider.getCode(address);
     if (!code || code === '0x') {
       this.logger.error(`[chain.check] ${label}: コントラクト未デプロイ address=${address}`);
       throw new Error(`${label} is not deployed`);
     }
 
-    const operator = await this.readOperatorAddress(address);
+    const operator = await this.readOperatorAddress(provider, address);
     if (!operator) {
       this.logger.warn(`[chain.check] ${label}: operator() を取得できませんでした address=${address}`);
       if (this.strictModeEnabled()) {
@@ -95,38 +99,47 @@ export class BlockchainService implements OnModuleInit {
     }
 
     try {
-      this._provider = new ethers.JsonRpcProvider(rpcUrl);
-      this._signer = new ethers.Wallet(privateKey, this._provider);
-      const network = await this._provider.getNetwork();
+      const provider = new ethers.JsonRpcProvider(rpcUrl);
+      const signer = new ethers.Wallet(privateKey, provider);
+      const network = await provider.getNetwork();
       this.logger.log(
-        `ブロックチェーン接続完了 chainId=${network.chainId.toString()} signer=${this._signer.address}`,
+        `ブロックチェーン接続完了 chainId=${network.chainId.toString()} signer=${signer.address}`,
       );
 
       await this.assertContractOperator(
+        provider,
         'UsageRight',
         process.env.USAGE_RIGHT_ADDRESS ?? process.env.ACCESS_PASS_NFT_ADDRESS,
-        this._signer.address,
+        signer.address,
       );
       await this.assertContractOperator(
+        provider,
         'Settlement',
         process.env.SETTLEMENT_ADDRESS,
-        this._signer.address,
+        signer.address,
       );
       await this.assertContractOperator(
+        provider,
         'MachineRegistry',
         process.env.MACHINE_REGISTRY_ADDRESS,
-        this._signer.address,
+        signer.address,
       );
       await this.assertContractOperator(
+        provider,
         'ComputeRight',
         process.env.COMPUTE_RIGHT_ADDRESS,
-        this._signer.address,
+        signer.address,
       );
       await this.assertContractOperator(
+        provider,
         'RevenueRight',
         process.env.REVENUE_RIGHT_ADDRESS,
-        this._signer.address,
+        signer.address,
       );
+
+      // 初期化が最後まで成功した時点でのみ公開状態へ反映する
+      this._provider = provider;
+      this._signer = signer;
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       this.logger.error(`ブロックチェーン初期化に失敗しました: ${msg}`);

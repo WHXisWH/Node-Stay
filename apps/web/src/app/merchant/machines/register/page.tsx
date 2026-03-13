@@ -2,13 +2,15 @@
 
 // マシン登録フォームページ（View 層）
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { createNodeStayClient } from '../../../../services/nodestay';
 
 type MachineClass = 'GPU' | 'CPU' | 'PREMIUM' | 'STANDARD';
 
 interface RegisterForm {
+  venueId: string;
   machineClass: MachineClass;
   label: string;
   cpu: string;
@@ -58,6 +60,7 @@ const inputClass =
 export default function MachineRegisterPage() {
   const router = useRouter();
   const [form, setForm] = useState<RegisterForm>({
+    venueId: '',
     machineClass: 'GPU',
     label: '',
     cpu: '',
@@ -69,6 +72,29 @@ export default function MachineRegisterPage() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadingVenues, setLoadingVenues] = useState(true);
+  const [venues, setVenues] = useState<Array<{ venueId: string; name: string }>>([]);
+
+  useEffect(() => {
+    void (async () => {
+      setLoadingVenues(true);
+      try {
+        const client = createNodeStayClient();
+        const merchantVenues = await client.listMyMerchantVenues().catch(() => []);
+        const rows = merchantVenues.length > 0 ? merchantVenues : await client.listVenues();
+        const options = rows.map((v) => ({ venueId: v.venueId, name: v.name }));
+        setVenues(options);
+        setForm((prev) => ({
+          ...prev,
+          venueId: prev.venueId || options[0]?.venueId || '',
+        }));
+      } catch {
+        setVenues([]);
+      } finally {
+        setLoadingVenues(false);
+      }
+    })();
+  }, []);
 
   const set = (field: keyof RegisterForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
@@ -77,6 +103,7 @@ export default function MachineRegisterPage() {
     setForm((prev) => ({ ...prev, machineClass: cls, gpu: cls === 'GPU' ? prev.gpu : '' }));
 
   const validate = () => {
+    if (!form.venueId.trim()) return '店舗を選択してください';
     if (!form.label.trim()) return 'マシン名を入力してください';
     if (!form.cpu.trim()) return 'CPU モデルを入力してください';
     if (!form.ramGb || Number(form.ramGb) <= 0) return 'RAM（GB）を正しく入力してください';
@@ -93,10 +120,32 @@ export default function MachineRegisterPage() {
     setError(null);
 
     try {
-      // 実際の API 呼び出し: POST /v1/machines
-      await new Promise((r) => setTimeout(r, 1200)); // モック遅延
+      const client = createNodeStayClient();
+      await client.registerMachine({
+        venueId: form.venueId,
+        machineClass: form.machineClass,
+        cpu: form.cpu.trim(),
+        gpu: form.gpu.trim() || undefined,
+        ramGb: Number(form.ramGb),
+        storageGb: Number(form.storageGb),
+        localSerial: form.localSerial.trim() || undefined,
+        metadataUri: form.metadataUri.trim() || undefined,
+      });
       router.push('/merchant/machines?registered=1');
-    } catch {
+    } catch (submitError: unknown) {
+      const msg = submitError instanceof Error ? submitError.message : '';
+      const jsonStart = msg.indexOf('{');
+      if (jsonStart >= 0) {
+        try {
+          const parsed = JSON.parse(msg.slice(jsonStart)) as { message?: string };
+          if (parsed.message) {
+            setError(parsed.message);
+            return;
+          }
+        } catch {
+          // JSON 解析に失敗した場合は共通メッセージを表示する
+        }
+      }
       setError('登録に失敗しました。しばらく経ってから再試行してください。');
     } finally {
       setSubmitting(false);
@@ -169,6 +218,23 @@ export default function MachineRegisterPage() {
               <p className="text-xs text-slate-400">スペックはオンチェーンのハッシュとして記録されます</p>
             </div>
 
+            <FormField label="登録先店舗" required hint="このマシンを紐づける店舗を選択してください">
+              <select
+                className={inputClass}
+                value={form.venueId}
+                onChange={set('venueId')}
+                disabled={loadingVenues}
+              >
+                {loadingVenues && <option value="">店舗情報を読み込み中...</option>}
+                {!loadingVenues && venues.length === 0 && <option value="">登録可能な店舗がありません</option>}
+                {!loadingVenues && venues.length > 0 && venues.map((venue) => (
+                  <option key={venue.venueId} value={venue.venueId}>
+                    {venue.name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+
             <FormField label="マシン名（管理用）" required hint="例：GPU ステーション A-03、プレミアム席 P-02">
               <input
                 type="text"
@@ -213,6 +279,12 @@ export default function MachineRegisterPage() {
             <h2 className="text-base font-bold text-slate-900 mb-4">STEP 3 — 登録内容の確認</h2>
             <div className="flex flex-col gap-2 text-sm mb-6">
               <div className="flex justify-between">
+                <span className="text-slate-500">登録先店舗</span>
+                <span className="font-semibold text-slate-800">
+                  {venues.find((v) => v.venueId === form.venueId)?.name ?? '—'}
+                </span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-slate-500">マシンクラス</span>
                 <span className="font-semibold text-slate-800">
                   {MACHINE_CLASS_OPTIONS.find((o) => o.value === form.machineClass)?.label}
@@ -252,7 +324,7 @@ export default function MachineRegisterPage() {
               </Link>
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={submitting || loadingVenues || venues.length === 0}
                 className="btn-primary flex-1 py-3"
               >
                 {submitting ? (
@@ -260,6 +332,8 @@ export default function MachineRegisterPage() {
                     <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     登録中...
                   </span>
+                ) : loadingVenues ? (
+                  '店舗情報を読み込み中...'
                 ) : (
                   'マシンを登録する'
                 )}

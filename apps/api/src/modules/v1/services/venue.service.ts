@@ -1,4 +1,5 @@
 import { HttpException, HttpStatus, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ethers } from 'ethers';
 import { PrismaService } from '../../../prisma/prisma.service';
 
 @Injectable()
@@ -6,6 +7,31 @@ export class VenueService implements OnModuleInit {
   private readonly logger = new Logger(VenueService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  private resolveDefaultTreasuryWallet(): string | null {
+    let operatorAddress: string | undefined;
+    const rawOperatorPk = process.env.OPERATOR_PRIVATE_KEY?.trim();
+    if (rawOperatorPk) {
+      try {
+        operatorAddress = ethers.computeAddress(rawOperatorPk);
+      } catch {
+        operatorAddress = undefined;
+      }
+    }
+
+    const candidates = [
+      process.env.PLATFORM_TREASURY,
+      process.env.PLATFORM_FEE_RECIPIENT,
+      operatorAddress,
+    ];
+    for (const candidate of candidates) {
+      const raw = candidate?.trim();
+      if (!raw) continue;
+      if (!ethers.isAddress(raw) || raw === ethers.ZeroAddress) continue;
+      return ethers.getAddress(raw);
+    }
+    return null;
+  }
 
   /** Prisma エラーを 503 に変換し、ログに詳細を残す */
   private handlePrismaError(e: unknown, context: string): never {
@@ -113,7 +139,7 @@ export class VenueService implements OnModuleInit {
 
   private async seed() {
     // デモユーザーを作成
-    await this.prisma.user.upsert({
+    const demoUser = await this.prisma.user.upsert({
       where: { email: 'demo@nodestay.jp' },
       create: {
         email: 'demo@nodestay.jp',
@@ -127,6 +153,8 @@ export class VenueService implements OnModuleInit {
     const merchant = await this.prisma.merchant.create({
       data: {
         businessName: 'NodeStay デモ運営',
+        ownerUserId: demoUser.id,
+        treasuryWallet: this.resolveDefaultTreasuryWallet(),
         kycStatus: 'VERIFIED',
       },
     });

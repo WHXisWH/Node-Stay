@@ -5,7 +5,7 @@
  * View は本 Hook の戻り値のみで描画する。
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { isAddress } from 'viem';
 import { useUserStore } from '../models/stores/user.store';
 import { useVenueStore } from '../stores/venue.store';
@@ -28,6 +28,7 @@ export interface UseVenueDetailPageReturn {
   purchaseError: string | null;
   needsApproval: boolean;
   purchaseSuccess: boolean;
+  clearPurchaseSuccess: () => void;
   mintStatus: 'idle' | 'pending' | 'confirmed' | 'timeout';
   mintedTokenId: string | null;
   handlePurchase: () => Promise<void>;
@@ -73,6 +74,10 @@ export function useVenueDetailPage(venueId: string | undefined): UseVenueDetailP
 
   // 残高不足かどうかを判定
   const insufficientBalance = balance !== null && requiredAmount > 0 && balance < requiredAmount;
+
+  const clearPurchaseSuccess = useCallback(() => {
+    setPurchaseSuccess(false);
+  }, []);
 
   useEffect(() => {
     if (venueId) VenueService.loadVenueDetail(venueId);
@@ -148,6 +153,7 @@ export function useVenueDetailPage(venueId: string | undefined): UseVenueDetailP
     purchaseError,
     needsApproval,
     purchaseSuccess,
+    clearPurchaseSuccess,
     mintStatus,
     mintedTokenId,
     handlePurchase,

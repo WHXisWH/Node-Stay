@@ -275,6 +275,7 @@ export default function VenueDetailPage() {
     purchaseError,
     needsApproval,
     purchaseSuccess,
+    clearPurchaseSuccess,
     handlePurchase,
     balance,
     insufficientBalance,
@@ -285,8 +286,9 @@ export default function VenueDetailPage() {
   useEffect(() => {
     if (purchaseSuccess) {
       toast.success('利用権を購入しました。マイ利用権からチェックインできます。');
+      clearPurchaseSuccess();
     }
-  }, [purchaseSuccess, toast]);
+  }, [purchaseSuccess, toast, clearPurchaseSuccess]);
 
   // 購入エラー時の通知
   useEffect(() => {

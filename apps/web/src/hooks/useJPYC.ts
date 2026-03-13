@@ -5,15 +5,19 @@
  * useJPYCApprove — JPYC の approve トランザクションを送信するフック
  * useJPYCTransfer — JPYC の transfer トランザクションを送信するフック
  *
- * wagmi の useReadContract / useWriteContract を使用。
+ * 読み取りは wagmi、書き込みは loginMethod に応じて AA / wagmi を使い分ける。
  * コントラクトアドレスは config.ts の CONTRACT_ADDRESSES.jpycToken。
  */
 
+import { useState } from 'react';
 import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { waitForTransactionReceipt } from '@wagmi/core';
 import { useConfig } from 'wagmi';
 import { parseUnits, formatUnits } from 'viem';
 import { CONTRACT_ADDRESSES } from '../services/config';
+import { useUserStore } from '../stores/user.store';
+import { useAaTransaction } from './useAaTransaction';
+import { encodeJpycTransfer } from '../services/aa/encodeMarketplaceCalls';
 
 // ---------------------------------------------------------------------------
 // ERC-20 最小 ABI（balanceOf + approve）
@@ -149,15 +153,35 @@ export interface UseJPYCTransferReturn {
 }
 
 export function useJPYCTransfer(): UseJPYCTransferReturn {
+  const loginMethod = useUserStore((s) => s.loginMethod);
+  const isAaMode = loginMethod === 'social';
   const config = useConfig();
   const { writeContractAsync, data: txHash, isPending, error: writeError } = useWriteContract();
+  const { sendUserOp, status: aaStatus, error: aaError } = useAaTransaction();
+  const [aaTransferred, setAaTransferred] = useState(false);
 
   const { isLoading: isConfirming, isSuccess: isTransferred } = useWaitForTransactionReceipt({
     hash: txHash,
   });
 
   const transferJpyc = async (to: `0x${string}`, amountJPYC: string) => {
+    setAaTransferred(false);
     const amount = parseUnits(amountJPYC, 18);
+    if (isAaMode) {
+      const result = await sendUserOp([
+        {
+          to: JPYC_ADDRESS,
+          data: encodeJpycTransfer(to, amount),
+          value: 0n,
+        },
+      ]);
+      if (!result?.txHash) {
+        throw new Error(aaError ?? 'AA での JPYC 送金に失敗しました');
+      }
+      setAaTransferred(true);
+      return result.txHash;
+    }
+
     const hash = await writeContractAsync({
       address: JPYC_ADDRESS,
       abi: ERC20_ABI,
@@ -168,13 +192,13 @@ export function useJPYCTransfer(): UseJPYCTransferReturn {
     return hash;
   };
 
-  const transferError = writeError ? writeError.message : null;
+  const transferError = isAaMode ? aaError : (writeError ? writeError.message : null);
 
   return {
     transferJpyc,
-    isTransferring: isPending,
-    isConfirming,
-    isTransferred,
+    isTransferring: isAaMode ? aaStatus === 'sending' : isPending,
+    isConfirming: isAaMode ? false : isConfirming,
+    isTransferred: isAaMode ? aaTransferred : isTransferred,
     transferError,
   };
 }

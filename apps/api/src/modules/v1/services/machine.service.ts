@@ -35,14 +35,14 @@ export class MachineService {
     ownerWallet?: string;
     metadataUri?: string;
   }) {
-    // machineId = keccak256 相当の決定論的 ID（オフチェーン版）
+    // オンチェーン登録前の暫定 machineId（登録完了後にチェーンの machineId で上書きする）
     const seed = `${input.venueId}:${input.machineClass}:${input.localSerial ?? ''}:${Date.now()}`;
-    const machineId = '0x' + crypto.createHash('sha256').update(seed).digest('hex');
+    const provisionalMachineId = '0x' + crypto.createHash('sha256').update(seed).digest('hex');
 
     const machine = await this.prisma.machine.create({
       data: {
         venueId: input.venueId,
-        machineId,
+        machineId: provisionalMachineId,
         machineClass: input.machineClass,
         cpu: input.cpu ?? null,
         gpu: input.gpu ?? null,
@@ -69,11 +69,18 @@ export class MachineService {
       metadataUri: input.metadataUri ?? '',
     }).then((result) => {
       if (result) {
-        this.logger.log(`オンチェーン登録成功: machineId=${machine.id} txHash=${result.txHash}`);
-        // onchain_tx_hash を先に書き込む（イベントリスナーが token_id を回写）
+        this.logger.log(
+          `オンチェーン登録成功: machineId=${result.machineId} tokenId=${result.tokenId} txHash=${result.txHash}`,
+        );
+        // チェーン側 machineId / tokenId を即時反映し、リスナー遅延時も整合性を保つ
         return this.prisma.machine.update({
           where: { id: machine.id },
-          data: { onchainTxHash: result.txHash },
+          data: {
+            machineId: result.machineId,
+            onchainTokenId: result.tokenId,
+            onchainTxHash: result.txHash,
+            status: 'ACTIVE',
+          },
         });
       }
     }).catch((e) => this.logger.error(`オンチェーン登録後処理失敗: ${e}`));

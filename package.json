@@ -18,6 +18,7 @@
     "prisma:generate": "npm run prisma:generate -w @nodestay/api || cd apps/api && npx prisma generate",
     "prisma:migrate": "cd apps/api && npx prisma migrate deploy",
     "prisma:studio": "cd apps/api && npx prisma studio",
+    "backfill:machines:onchain": "node scripts/backfill-machine-onchain.mjs",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down"
   },

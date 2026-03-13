@@ -32,7 +32,11 @@ describe('Auth Guard & Security', () => {
     it('GET /v1/health → 200 without token', async () => {
       const res = await request(app.getHttpServer()).get('/v1/health');
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ ok: true });
+      expect(res.body.status).toBe('ok');
+      expect(typeof res.body.timestamp).toBe('string');
+      expect(res.body.services?.api?.status).toBe('ok');
+      expect(res.body.services?.database?.status).toBeDefined();
+      expect(res.body.services?.blockchain?.status).toBe('ok');
     });
 
     it('GET /v1/venues → 200 without token', async () => {
