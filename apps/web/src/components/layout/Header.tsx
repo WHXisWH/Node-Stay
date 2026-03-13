@@ -8,15 +8,17 @@ import { useSyncState } from '../../hooks/useSyncState';
 import { useUiState } from '../../hooks/useUiState';
 import { useUserState } from '../../hooks/useUserState';
 
+// ナビゲーション項目定義
+// protectedフラグ: 認証が必要なルート（ミドルウェアで保護）
 const NAV_ITEMS = [
-  { href: '/',           label: 'ホーム' },
-  { href: '/venues',     label: '会場を探す' },
-  { href: '/explore',    label: 'マップ' },
-  { href: '/marketplace', label: 'マーケット' },
-  { href: '/usage-rights', label: '利用権' },
-  { href: '/sessions',   label: 'セッション' },
-  { href: '/compute',    label: 'コンピュート' },
-  { href: '/revenue',    label: '収益' },
+  { href: '/',           label: 'ホーム',         protected: false },
+  { href: '/venues',     label: '店舗を探す',      protected: false },
+  { href: '/explore',    label: 'マップ',         protected: false },
+  { href: '/marketplace', label: 'マーケット',     protected: false },
+  { href: '/usage-rights', label: '利用権',       protected: true },
+  { href: '/sessions',   label: 'セッション',     protected: true },
+  { href: '/compute',    label: 'コンピュート',   protected: false },
+  { href: '/revenue',    label: '収益',           protected: true },
 ] as const;
 
 async function copyToClipboard(value: string): Promise<void> {
@@ -171,17 +173,29 @@ export function Header() {
             <nav className="hidden lg:flex items-center gap-1 flex-1 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {NAV_ITEMS.map((item) => {
                 const active = isNavItemActive(item.href);
+                // 認証が必要なルートで未ログインの場合は視覚的に区別
+                const needsAuth = item.protected && !isAuthenticated;
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap [word-break:keep-all] leading-none shrink-0 transition-colors ${
+                    className={`px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap [word-break:keep-all] leading-none shrink-0 transition-colors flex items-center gap-1 ${
                       active
                         ? scrolled ? 'bg-brand-50 text-brand-700' : 'bg-white/10 text-white'
-                        : scrolled ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-50' : 'text-white/85 hover:text-white hover:bg-white/10'
+                        : needsAuth
+                          ? scrolled ? 'text-slate-400 hover:text-slate-600 hover:bg-slate-50' : 'text-white/50 hover:text-white/70 hover:bg-white/5'
+                          : scrolled ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-50' : 'text-white/85 hover:text-white hover:bg-white/10'
                     }`}
+                    title={needsAuth ? 'ログインが必要です' : undefined}
                   >
                     {item.label}
+                    {/* 認証必要マーク（未ログイン時のみ表示） */}
+                    {needsAuth && (
+                      <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="opacity-60">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                      </svg>
+                    )}
                   </Link>
                 );
               })}
@@ -363,16 +377,32 @@ export function Header() {
               <div className="pt-2 border-t border-slate-100 flex flex-col gap-1">
                 {NAV_ITEMS.map((item) => {
                   const active = isNavItemActive(item.href);
+                  // 認証が必要なルートで未ログインの場合は視覚的に区別
+                  const needsAuth = item.protected && !isAuthenticated;
                   return (
                     <Link
                       key={item.href}
                       href={item.href}
                       onClick={closeMobile}
-                      className={`px-4 py-3 rounded-xl text-sm font-medium ${
-                        active ? 'bg-brand-50 text-brand-700' : 'text-slate-700 hover:bg-slate-50'
+                      className={`px-4 py-3 rounded-xl text-sm font-medium flex items-center justify-between ${
+                        active
+                          ? 'bg-brand-50 text-brand-700'
+                          : needsAuth
+                            ? 'text-slate-400 hover:bg-slate-50'
+                            : 'text-slate-700 hover:bg-slate-50'
                       }`}
                     >
                       {item.label}
+                      {/* 認証必要マーク（未ログイン時のみ表示） */}
+                      {needsAuth && (
+                        <span className="flex items-center gap-1 text-xs text-slate-400">
+                          <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                          </svg>
+                          要ログイン
+                        </span>
+                      )}
                     </Link>
                   );
                 })}

@@ -2,9 +2,12 @@
 // アプリ全体の共通レイアウト（ヘッダー、フッター、グローバルスタイル）を定義する
 
 import type { ReactNode } from 'react';
+import { Suspense } from 'react';
 import type { Metadata, Viewport } from 'next';
 import { Header } from '../components/layout/Header';
 import { Footer } from '../components/layout/Footer';
+import { LoginPromptBanner } from '../components/layout/LoginPromptBanner';
+import { ToastProvider } from '../components/ui/Toast';
 import { Web3Provider } from '../providers/Web3Provider';
 import './globals.css';
 
@@ -36,18 +39,31 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
       </head>
       <body className="min-h-screen flex flex-col antialiased">
+        {/* スキップリンク（キーボードナビゲーション用） */}
+        <a href="#main-content" className="skip-link">
+          メインコンテンツへスキップ
+        </a>
+
         {/* Web3 プロバイダ（wagmi + RainbowKit + TanStack Query） */}
         <Web3Provider>
-          {/* グローバルヘッダー */}
-          <Header />
+          {/* グローバル通知プロバイダ */}
+          <ToastProvider>
+            {/* グローバルヘッダー */}
+            <Header />
 
-          {/* メインコンテンツ */}
-          <main className="flex-1">
-            {children}
-          </main>
+            {/* ログイン促進バナー（リダイレクト時に表示） */}
+            <Suspense fallback={null}>
+              <LoginPromptBanner />
+            </Suspense>
 
-          {/* グローバルフッター */}
-          <Footer />
+            {/* メインコンテンツ */}
+            <main id="main-content" className="flex-1" tabIndex={-1}>
+              {children}
+            </main>
+
+            {/* グローバルフッター */}
+            <Footer />
+          </ToastProvider>
         </Web3Provider>
       </body>
     </html>

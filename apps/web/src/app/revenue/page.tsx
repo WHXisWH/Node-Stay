@@ -252,7 +252,7 @@ export default function RevenueDashboardPage() {
                 href="/merchant/dashboard"
                 className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-sm font-semibold transition-colors"
               >
-                収益権プログラム発行（商戶）
+                収益権プログラム発行（店舗向け）
               </Link>
             </div>
             {unclaimedCount > 0 && (

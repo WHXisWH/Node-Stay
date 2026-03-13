@@ -7,6 +7,7 @@ import { usePassesPage } from '../../hooks';
 import type { UsageRight } from '../../hooks/usePassesPage';
 import { useUserState } from '../../hooks/useUserState';
 import { CheckinQrCode } from '../../components/CheckinQrCode';
+import { Modal } from '../../components/ui';
 
 // ===== ステータスラベル定義（View 表示用） =====
 const STATUS_CONFIG: Record<
@@ -73,31 +74,25 @@ function formatExpiry(isoString: string): string {
 }
 
 // ===== QRコード表示モーダル =====
-function QrModal({ right, onClose }: { right: UsageRight; onClose: () => void }) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-slide-up text-center"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* ヘッダー */}
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-base font-bold text-slate-900">チェックイン用 QR コード</h2>
-          <button
-            onClick={onClose}
-            className="w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400"
-          >
-            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <line x1="4" y1="4" x2="14" y2="14" />
-              <line x1="14" y1="4" x2="4" y2="14" />
-            </svg>
-          </button>
-        </div>
+function QrModal({
+  isOpen,
+  right,
+  onClose,
+}: {
+  isOpen: boolean;
+  right: UsageRight | null;
+  onClose: () => void;
+}) {
+  if (!right) return null;
 
+  return (
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="チェックイン用 QR コード"
+      size="sm"
+    >
+      <div className="text-center">
         {/* QRコード */}
         <div className="w-48 h-48 mx-auto mb-4 flex items-center justify-center">
           <CheckinQrCode
@@ -119,7 +114,7 @@ function QrModal({ right, onClose }: { right: UsageRight; onClose: () => void })
           スタッフまたはキオスクのスキャナーにこのQRコードを提示してください
         </p>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -360,7 +355,7 @@ export default function UsageRightsPage() {
 
       {/* QRコードモーダル */}
       {qrRight && (
-        <QrModal right={qrRight} onClose={() => setQrRight(null)} />
+        <QrModal isOpen={!!qrRight} right={qrRight} onClose={() => setQrRight(null)} />
       )}
     </>
   );

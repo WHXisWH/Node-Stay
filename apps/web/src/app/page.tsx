@@ -87,10 +87,10 @@ function HeroSection() {
               </svg>
             </Link>
             <Link
-              href="/passes"
+              href="/usage-rights"
               className="inline-flex items-center gap-2 px-7 py-3.5 bg-white/8 hover:bg-white/12 border border-white/15 text-white font-semibold rounded-xl transition-all duration-150 text-base"
             >
-              マイパスを確認
+              マイ利用権
             </Link>
           </div>
 

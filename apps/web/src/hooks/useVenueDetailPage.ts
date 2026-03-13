@@ -31,6 +31,10 @@ export interface UseVenueDetailPageReturn {
   mintStatus: 'idle' | 'pending' | 'confirmed' | 'timeout';
   mintedTokenId: string | null;
   handlePurchase: () => Promise<void>;
+  // JPYC残高チェック関連
+  balance: number | null;
+  insufficientBalance: boolean;
+  requiredAmount: number;
 }
 
 export function useVenueDetailPage(venueId: string | undefined): UseVenueDetailPageReturn {
@@ -43,6 +47,10 @@ export function useVenueDetailPage(venueId: string | undefined): UseVenueDetailP
 
   // SIWE 認証済みアドレス（API 呼び出しに使用）
   const walletAddress = useUserStore((s) => s.walletAddress);
+  // ユーザーの JPYC 残高オブジェクト
+  const balanceObj = useUserStore((s) => s.balance);
+  // 残高を数値（minor 単位：1/100 JPYC）として抽出
+  const balance = balanceObj?.balanceMinor ?? null;
 
   const [selectedPlan, setSelectedPlan] = useState<PlanListItem | null>(null);
   const [purchasing, setPurchasing] = useState(false);
@@ -58,12 +66,28 @@ export function useVenueDetailPage(venueId: string | undefined): UseVenueDetailP
   // ウォレットアドレスがあり、かつ settlement アドレスが有効な場合に approve が必要
   const needsApproval = isAddress(settlementAddress) && !!walletAddress;
 
+  // 購入に必要な合計金額（基本料金 + デポジット）
+  const requiredAmount = selectedPlan
+    ? selectedPlan.basePriceMinor + selectedPlan.depositRequiredMinor
+    : 0;
+
+  // 残高不足かどうかを判定
+  const insufficientBalance = balance !== null && requiredAmount > 0 && balance < requiredAmount;
+
   useEffect(() => {
     if (venueId) VenueService.loadVenueDetail(venueId);
   }, [venueId]);
 
   const handlePurchase = async () => {
     if (!selectedPlan || !venueId) return;
+
+    // 残高不足チェック
+    if (insufficientBalance) {
+      const shortage = ((requiredAmount - (balance ?? 0)) / 100).toLocaleString('ja-JP');
+      setPurchaseError(`JPYC 残高が不足しています（あと ${shortage} JPYC 必要）`);
+      return;
+    }
+
     setPurchaseError(null);
     setPurchaseSuccess(false);
     setMintStatus('idle');
@@ -127,5 +151,9 @@ export function useVenueDetailPage(venueId: string | undefined): UseVenueDetailP
     mintStatus,
     mintedTokenId,
     handlePurchase,
+    // JPYC残高チェック関連
+    balance,
+    insufficientBalance,
+    requiredAmount,
   };
 }

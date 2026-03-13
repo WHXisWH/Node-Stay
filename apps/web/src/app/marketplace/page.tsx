@@ -2,8 +2,10 @@
 
 // マーケットプレイスページ（View 層：useMarketplacePage の戻り値を表示のみ）
 
+import { useEffect } from 'react';
 import Link from 'next/link';
 import { useMarketplacePage } from '../../hooks';
+import { Modal, useToast } from '../../components/ui';
 import type { MarketplaceListing, MarketplaceSort, DurationFilter } from '../../hooks/useMarketplacePage';
 
 // ===== ユーティリティ =====
@@ -39,82 +41,32 @@ function discountPercent(original: number, price: number) {
 
 // ===== 購入確認モーダル =====
 function PurchaseModal({
+  isOpen,
   listing,
   onConfirm,
   onClose,
   purchasing,
   error,
 }: {
-  listing: MarketplaceListing;
+  isOpen: boolean;
+  listing: MarketplaceListing | null;
   onConfirm: () => void;
   onClose: () => void;
   purchasing: boolean;
   error: string | null;
 }) {
+  if (!listing) return null;
+
   const discount = discountPercent(listing.originalPriceMinor, listing.priceMinor);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-slide-up"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-base font-bold text-slate-900">購入確認</h2>
-          <button onClick={onClose} className="w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400">
-            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <line x1="4" y1="4" x2="14" y2="14" /><line x1="14" y1="4" x2="4" y2="14" />
-            </svg>
-          </button>
-        </div>
-
-        {/* 商品情報 */}
-        <div className="bg-slate-50 rounded-xl p-4 mb-5 flex flex-col gap-2.5 text-sm">
-          <div className="flex justify-between">
-            <span className="text-slate-500">プラン</span>
-            <span className="font-semibold text-slate-800">{listing.planName}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-500">店舗</span>
-            <span className="font-semibold text-slate-800">{listing.venueName}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-500">利用時間</span>
-            <span className="font-semibold text-slate-800">{formatDuration(listing.durationMinutes)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-500">有効期限</span>
-            <span className="font-semibold text-slate-800">{formatExpiryDays(listing.expiresAt)}</span>
-          </div>
-          <div className="border-t border-slate-200 pt-2.5 flex justify-between items-center">
-            <span className="text-slate-500">出品者</span>
-            <span className="font-mono text-xs text-slate-600">{listing.sellerAddress}</span>
-          </div>
-          <div className="bg-brand-50 rounded-lg p-3 flex justify-between items-center mt-1">
-            <div>
-              <p className="text-xs text-slate-400 line-through">{formatJPYC(listing.originalPriceMinor)} JPYC</p>
-              <p className="text-xl font-extrabold text-brand-700">{formatJPYC(listing.priceMinor)} JPYC</p>
-            </div>
-            {discount > 0 && (
-              <span className="text-sm font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">
-                {discount}% OFF
-              </span>
-            )}
-          </div>
-        </div>
-
-        {error && <p className="text-xs text-red-500 mb-4">{error}</p>}
-
-        <p className="text-xs text-slate-400 mb-5 leading-relaxed">
-          ※ 購入後、利用権はマイ利用権に追加されます。JPYC は即時決済されます。
-          オンチェーン転送完了まで数秒かかる場合があります。
-        </p>
-
-        <div className="flex gap-3">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="購入確認"
+      size="md"
+      footer={
+        <div className="flex gap-3 w-full">
           <button onClick={onClose} disabled={purchasing} className="btn-secondary flex-1 py-2.5">
             キャンセル
           </button>
@@ -127,8 +79,50 @@ function PurchaseModal({
             ) : 'JPYC で購入する'}
           </button>
         </div>
+      }
+    >
+      {/* 商品情報 */}
+      <div className="bg-slate-50 rounded-xl p-4 mb-4 flex flex-col gap-2.5 text-sm">
+        <div className="flex justify-between">
+          <span className="text-slate-500">プラン</span>
+          <span className="font-semibold text-slate-800">{listing.planName}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-slate-500">店舗</span>
+          <span className="font-semibold text-slate-800">{listing.venueName}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-slate-500">利用時間</span>
+          <span className="font-semibold text-slate-800">{formatDuration(listing.durationMinutes)}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-slate-500">有効期限</span>
+          <span className="font-semibold text-slate-800">{formatExpiryDays(listing.expiresAt)}</span>
+        </div>
+        <div className="border-t border-slate-200 pt-2.5 flex justify-between items-center">
+          <span className="text-slate-500">出品者</span>
+          <span className="font-mono text-xs text-slate-600">{listing.sellerAddress}</span>
+        </div>
+        <div className="bg-brand-50 rounded-lg p-3 flex justify-between items-center mt-1">
+          <div>
+            <p className="text-xs text-slate-400 line-through">{formatJPYC(listing.originalPriceMinor)} JPYC</p>
+            <p className="text-xl font-extrabold text-brand-700">{formatJPYC(listing.priceMinor)} JPYC</p>
+          </div>
+          {discount > 0 && (
+            <span className="text-sm font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full">
+              {discount}% OFF
+            </span>
+          )}
+        </div>
       </div>
-    </div>
+
+      {error && <p className="text-xs text-red-500 mb-4" role="alert">{error}</p>}
+
+      <p className="text-xs text-slate-400 leading-relaxed">
+        ※ 購入後、利用権はマイ利用権に追加されます。JPYC は即時決済されます。
+        オンチェーン転送完了まで数秒かかる場合があります。
+      </p>
+    </Modal>
   );
 }
 
@@ -221,6 +215,7 @@ function ListingCard({
 
 // ===== ページコンポーネント =====
 export default function MarketplacePage() {
+  const toast = useToast();
   const {
     filtered,
     searchQuery, setSearchQuery,
@@ -230,6 +225,20 @@ export default function MarketplacePage() {
     purchasing, purchaseSuccess, purchaseError,
     handlePurchase,
   } = useMarketplacePage();
+
+  // 購入成功時の通知
+  useEffect(() => {
+    if (purchaseSuccess) {
+      toast.success('利用権を購入しました。マイ利用権で確認できます。');
+    }
+  }, [purchaseSuccess, toast]);
+
+  // 購入エラー時の通知
+  useEffect(() => {
+    if (purchaseError) {
+      toast.error(purchaseError);
+    }
+  }, [purchaseError, toast]);
 
   const SORT_OPTIONS: { value: MarketplaceSort; label: string }[] = [
     { value: 'newest',     label: '新着順' },
@@ -380,15 +389,14 @@ export default function MarketplacePage() {
       </div>
 
       {/* 購入確認モーダル */}
-      {buyingListing && (
-        <PurchaseModal
-          listing={buyingListing}
-          onConfirm={handlePurchase}
-          onClose={() => setBuyingListing(null)}
-          purchasing={purchasing}
-          error={purchaseError}
-        />
-      )}
+      <PurchaseModal
+        isOpen={!!buyingListing}
+        listing={buyingListing}
+        onConfirm={handlePurchase}
+        onClose={() => setBuyingListing(null)}
+        purchasing={purchasing}
+        error={purchaseError}
+      />
     </>
   );
 }

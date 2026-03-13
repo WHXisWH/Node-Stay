@@ -3,12 +3,12 @@ import Link from 'next/link';
 const contacts = [
   {
     label: '技術サポート',
-    value: 'support@nodestay.example',
+    value: 'support@nodestay.io',
     note: 'ログイン不具合、署名エラー、画面表示の不具合はこちら',
   },
   {
     label: '事業提携・加盟店相談',
-    value: 'biz@nodestay.example',
+    value: 'biz@nodestay.io',
     note: '加盟店登録、料金設計、運用フロー相談はこちら',
   },
 ] as const;

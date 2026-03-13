@@ -456,3 +456,85 @@ h1, h2, h3, h4, h5, h6 {
 .venue-popup .maplibregl-popup-content-wrapper {
   min-width: 240px;
 }
+
+/* ===== アクセシビリティ ===== */
+
+/* スキップリンク（キーボードナビゲーション用） */
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.75rem 1.5rem;
+  background-color: var(--color-brand-600);
+  color: white;
+  font-weight: 600;
+  border-radius: 0 0 0.75rem 0.75rem;
+  z-index: 9999;
+  transition: top 0.2s ease-in-out;
+}
+
+.skip-link:focus {
+  top: 0;
+  outline: none;
+}
+
+/* フォーカス可視スタイル（キーボード操作時のみ表示） */
+:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+}
+
+/* マウス操作時はアウトラインを非表示 */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ボタンのフォーカススタイル */
+.btn-primary:focus-visible,
+.btn-secondary:focus-visible,
+.btn-jpyc:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.2);
+}
+
+/* リンクのフォーカススタイル */
+a:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
+}
+
+/* モーション軽減設定 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .animate-fade-in,
+  .animate-slide-up,
+  .animate-pulse,
+  .animate-pulse-slow,
+  .skeleton {
+    animation: none !important;
+  }
+}
+
+/* スクリーンリーダー専用テキスト */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

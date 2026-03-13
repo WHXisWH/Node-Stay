@@ -2,9 +2,11 @@
 
 // 店舗詳細ページ（View 層：useVenueDetailPage の戻り値を表示のみ、SPEC V2）
 
+import { useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useVenueDetailPage } from '../../../hooks';
+import { Modal, useToast } from '../../../components/ui';
 import type { PlanListItem } from '../../../models/venue.model';
 
 // ===== 時間フォーマットユーティリティ =====
@@ -128,6 +130,7 @@ function PlanCard({
 
 // ===== 購入確認モーダルコンポーネント =====
 function PurchaseModal({
+  isOpen,
   plan,
   venueName,
   onClose,
@@ -135,91 +138,37 @@ function PurchaseModal({
   purchasing,
   approving,
   needsApproval,
+  balance,
+  insufficientBalance,
 }: {
-  plan: PlanListItem;
+  isOpen: boolean;
+  plan: PlanListItem | null;
   venueName: string;
   onClose: () => void;
   onConfirm: () => void;
   purchasing: boolean;
   approving: boolean;
   needsApproval: boolean;
+  balance: number | null;
+  insufficientBalance: boolean;
 }) {
+  if (!plan) return null;
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-slide-up"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* モーダルヘッダー */}
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-bold text-slate-900">購入確認</h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-colors"
-          >
-            <svg
-              width="18"
-              height="18"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            >
-              <line x1="4" y1="4" x2="18" y2="18" />
-              <line x1="18" y1="4" x2="4" y2="18" />
-            </svg>
-          </button>
-        </div>
-
-        {/* 購入内容 */}
-        <div className="bg-slate-50 rounded-xl p-4 mb-6 flex flex-col gap-3">
-          <div className="flex justify-between text-sm">
-            <span className="text-slate-500">店舗</span>
-            <span className="font-semibold text-slate-800">{venueName}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-slate-500">プラン</span>
-            <span className="font-semibold text-slate-800">{plan.name}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-slate-500">利用時間</span>
-            <span className="font-semibold text-slate-800">{formatDuration(plan.baseDurationMinutes)}</span>
-          </div>
-          <div className="border-t border-slate-200 pt-3 flex justify-between">
-            <span className="text-slate-500 text-sm">基本料金</span>
-            <span className="font-bold text-slate-800">{formatJPYC(plan.basePriceMinor)} JPYC</span>
-          </div>
-          <div className="flex justify-between text-sm text-slate-500">
-            <span>デポジット（チェックアウト時返金）</span>
-            <span>{formatJPYC(plan.depositRequiredMinor)} JPYC</span>
-          </div>
-          <div className="bg-brand-50 rounded-lg p-3 flex justify-between items-center">
-            <span className="font-bold text-slate-800">合計（凍結額）</span>
-            <span className="text-xl font-extrabold text-brand-700">
-              {formatJPYC(plan.basePriceMinor + plan.depositRequiredMinor)} JPYC
-            </span>
-          </div>
-        </div>
-
-        {/* 注記 */}
-        <p className="text-xs text-slate-400 mb-6 leading-relaxed">
-          ※ デポジットはチェックアウト時に実費精算後、差額が自動返金されます。
-          超過料金は最安パックへ自動アップグレードされます。
-        </p>
-
-        {/* ボタン群 */}
-        <div className="flex gap-3">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="購入確認"
+      size="md"
+      footer={
+        <div className="flex gap-3 w-full">
           <button onClick={onClose} className="btn-secondary flex-1" disabled={purchasing}>
             キャンセル
           </button>
           <button
             onClick={onConfirm}
-            disabled={purchasing}
-            className="btn-primary flex-1"
+            disabled={purchasing || insufficientBalance}
+            className={`btn-primary flex-1 ${insufficientBalance ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             {approving ? (
               <span className="flex items-center gap-2">
@@ -231,13 +180,79 @@ function PurchaseModal({
                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                 処理中...
               </span>
+            ) : insufficientBalance ? (
+              '残高不足'
             ) : (
               needsApproval ? '承認して購入する' : 'JPYC で購入する'
             )}
           </button>
         </div>
+      }
+    >
+      {/* 購入内容 */}
+      <div className="bg-slate-50 rounded-xl p-4 mb-4 flex flex-col gap-3">
+        <div className="flex justify-between text-sm">
+          <span className="text-slate-500">店舗</span>
+          <span className="font-semibold text-slate-800">{venueName}</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span className="text-slate-500">プラン</span>
+          <span className="font-semibold text-slate-800">{plan.name}</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span className="text-slate-500">利用時間</span>
+          <span className="font-semibold text-slate-800">{formatDuration(plan.baseDurationMinutes)}</span>
+        </div>
+        <div className="border-t border-slate-200 pt-3 flex justify-between">
+          <span className="text-slate-500 text-sm">基本料金</span>
+          <span className="font-bold text-slate-800">{formatJPYC(plan.basePriceMinor)} JPYC</span>
+        </div>
+        <div className="flex justify-between text-sm text-slate-500">
+          <span>デポジット（チェックアウト時返金）</span>
+          <span>{formatJPYC(plan.depositRequiredMinor)} JPYC</span>
+        </div>
+        <div className="bg-brand-50 rounded-lg p-3 flex justify-between items-center">
+          <span className="font-bold text-slate-800">合計（凍結額）</span>
+          <span className="text-xl font-extrabold text-brand-700">
+            {formatJPYC(plan.basePriceMinor + plan.depositRequiredMinor)} JPYC
+          </span>
+        </div>
+
+        {/* 現在の残高表示 */}
+        {balance !== null && (
+          <div className="flex justify-between items-center text-sm pt-2 border-t border-slate-100">
+            <span className="text-slate-500">現在の残高</span>
+            <span className={`font-semibold ${insufficientBalance ? 'text-red-600' : 'text-slate-700'}`}>
+              {formatJPYC(balance)} JPYC
+            </span>
+          </div>
+        )}
       </div>
-    </div>
+
+      {/* 残高不足警告 */}
+      {insufficientBalance && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2" role="alert">
+          <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+            <svg width="10" height="10" fill="none" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <line x1="5" y1="2" x2="5" y2="6" />
+              <circle cx="5" cy="8" r="0.5" fill="#DC2626" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-red-800">残高が不足しています</p>
+            <p className="text-xs text-red-600 mt-0.5">
+              あと {formatJPYC((plan.basePriceMinor + plan.depositRequiredMinor) - (balance ?? 0))} JPYC が必要です
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* 注記 */}
+      <p className="text-xs text-slate-400 leading-relaxed">
+        ※ デポジットはチェックアウト時に実費精算後、差額が自動返金されます。
+        超過料金は最安パックへ自動アップグレードされます。
+      </p>
+    </Modal>
   );
 }
 
@@ -245,6 +260,7 @@ function PurchaseModal({
 export default function VenueDetailPage() {
   const params = useParams<{ venueId: string }>();
   const venueId = params.venueId as string | undefined;
+  const toast = useToast();
 
   const {
     venue,
@@ -260,7 +276,24 @@ export default function VenueDetailPage() {
     needsApproval,
     purchaseSuccess,
     handlePurchase,
+    balance,
+    insufficientBalance,
+    requiredAmount,
   } = useVenueDetailPage(venueId);
+
+  // 購入成功時の通知
+  useEffect(() => {
+    if (purchaseSuccess) {
+      toast.success('利用権を購入しました。マイ利用権からチェックインできます。');
+    }
+  }, [purchaseSuccess, toast]);
+
+  // 購入エラー時の通知
+  useEffect(() => {
+    if (purchaseError) {
+      toast.error(purchaseError);
+    }
+  }, [purchaseError, toast]);
 
   // ローディング中
   if (loading) {
@@ -462,6 +495,7 @@ export default function VenueDetailPage() {
       {/* 購入確認モーダル */}
       {selectedPlan && venue && (
         <PurchaseModal
+          isOpen={!!selectedPlan}
           plan={selectedPlan}
           venueName={venue.name}
           onClose={() => setSelectedPlan(null)}
@@ -469,6 +503,8 @@ export default function VenueDetailPage() {
           purchasing={purchasing}
           approving={approving}
           needsApproval={needsApproval}
+          balance={balance}
+          insufficientBalance={insufficientBalance}
         />
       )}
     </>
