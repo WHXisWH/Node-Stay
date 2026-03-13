@@ -14,39 +14,43 @@ export class UsageRightService {
     private readonly userService: UserService,
   ) {}
 
+  private requireWalletAddress(wallet: string | null | undefined, label: string): string {
+    const normalized = wallet?.trim() ?? '';
+    if (!normalized || !ethers.isAddress(normalized) || normalized === ethers.ZeroAddress) {
+      throw new HttpException(
+        { message: `${label}のウォレットアドレスが不正です` },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    return normalized;
+  }
+
   async purchase(input: {
     ownerUserId: string | null;
     productId: string;
-    buyerWallet?: string;   // ミント先ウォレットアドレス（省略時は ZeroAddress）
+    buyerWallet?: string;
   }) {
-    // usageProduct と紐づく machine を一括取得（machineId 解決に利用）
     const product = await this.prisma.usageProduct.findUnique({
       where: { id: input.productId },
       include: { machine: true },
     });
     if (!product) return null;
 
-    // owner_user_id は users.id への FK のため、フロントから渡る walletAddress を userId に解決する
-    // あわせて mint 先ウォレット（buyerWallet）も決定する。
     let ownerUserId: string | null = null;
     let resolvedBuyerWallet: string | null = null;
     if (input.ownerUserId) {
       const rawOwner = input.ownerUserId.trim();
-      const isWallet = /^0x[0-9a-fA-F]{40}$/.test(rawOwner);
-      if (isWallet) {
+      if (/^0x[0-9a-fA-F]{40}$/.test(rawOwner)) {
         ownerUserId = await this.userService.findOrCreateByWallet(rawOwner);
         resolvedBuyerWallet = rawOwner;
       } else {
-        ownerUserId = await this.userService.resolveUserId({ userId: input.ownerUserId });
-        if (!ownerUserId) ownerUserId = null;
+        ownerUserId = await this.userService.resolveUserId({ userId: rawOwner });
         if (ownerUserId) {
           const owner = await this.prisma.user.findUnique({
             where: { id: ownerUserId },
             select: { walletAddress: true },
           });
-          if (owner?.walletAddress && /^0x[0-9a-fA-F]{40}$/.test(owner.walletAddress)) {
-            resolvedBuyerWallet = owner.walletAddress;
-          }
+          resolvedBuyerWallet = owner?.walletAddress ?? null;
         }
       }
     }
@@ -55,9 +59,39 @@ export class UsageRightService {
     const durationMs = (product.durationMinutes ?? 60) * 60 * 1000;
     const startAt = now;
     const endAt = new Date(now.getTime() + durationMs);
-    // 転送締切: durationMinutes の前半で打ち切り（デフォルト: transferCutoffMinutes 分前）
     const cutoffMs = product.transferCutoffMinutes * 60 * 1000;
     const transferCutoffAt = new Date(startAt.getTime() + Math.max(durationMs - cutoffMs, 0));
+    const buyerWallet = this.requireWalletAddress(
+      input.buyerWallet ?? resolvedBuyerWallet,
+      '購入者',
+    );
+
+    this.logger.log(
+      `[usage-right.purchase] start productId=${input.productId} ownerUserId=${ownerUserId ?? 'null'} buyerWallet=${buyerWallet}`,
+    );
+
+    const onchain = await this.usageRightContract.mintUsageRight({
+      to: buyerWallet,
+      machineId: product.machine?.machineId ?? ethers.ZeroHash,
+      machinePoolId: ethers.ZeroHash,
+      startAt: BigInt(Math.floor(startAt.getTime() / 1000)),
+      endAt: BigInt(Math.floor(endAt.getTime() / 1000)),
+      usageType: 0,
+      transferable: product.transferable,
+      transferCutoff: BigInt(Math.floor(transferCutoffAt.getTime() / 1000)),
+      maxTransferCount: product.maxTransferCount,
+      kycLevelRequired: product.kycLevelRequired,
+      metadataUri: '',
+    });
+    if (!onchain) {
+      this.logger.error(
+        `[usage-right.purchase] onchain mint failed productId=${input.productId} buyerWallet=${buyerWallet}`,
+      );
+      throw new HttpException(
+        { message: 'オンチェーン発行に失敗しました' },
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
 
     const right = await this.prisma.usageRight.create({
       data: {
@@ -70,42 +104,19 @@ export class UsageRightService {
         maxTransferCount: product.maxTransferCount,
         transferCutoffAt,
         kycLevelRequired: product.kycLevelRequired,
+        onchainTokenId: onchain.tokenId.toString(),
+        onchainTxHash: onchain.txHash,
       },
     });
 
-    // オンチェーン mint を非同期で試みる（失敗してもオフライン動作を継続）
-    // buyerWallet が未指定でも owner 情報から解決できれば ZeroAddress を避ける。
-    const buyerWallet = input.buyerWallet ?? resolvedBuyerWallet ?? ethers.ZeroAddress;
-    this.usageRightContract.mintUsageRight({
-      to: buyerWallet,
-      machineId: product.machine?.machineId ?? ethers.ZeroHash,
-      machinePoolId: ethers.ZeroHash,
-      startAt: BigInt(Math.floor(startAt.getTime() / 1000)),
-      endAt: BigInt(Math.floor(endAt.getTime() / 1000)),
-      usageType: 0,
-      transferable: product.transferable,
-      transferCutoff: BigInt(Math.floor(transferCutoffAt.getTime() / 1000)),
-      maxTransferCount: product.maxTransferCount,
-      kycLevelRequired: product.kycLevelRequired,
-      metadataUri: '',
-    }).then((result) => {
-      if (result) {
-        this.logger.log(`mintUsageRight 成功: rightId=${right.id} txHash=${result.txHash}`);
-        // オンチェーン txHash と tokenId を DB に書き戻す
-        return this.prisma.usageRight.update({
-          where: { id: right.id },
-          data: { onchainTxHash: result.txHash, onchainTokenId: result.tokenId.toString() },
-        });
-      }
-    }).catch((e) => this.logger.error(`mintUsageRight 後処理失敗: ${e}`));
-
-    // DB レコードを即時返却（onchainTxHash は未確定の場合あり）
+    this.logger.log(
+      `[usage-right.purchase] done rightId=${right.id} tokenId=${onchain.tokenId.toString()} txHash=${onchain.txHash}`,
+    );
     return right;
   }
 
   /**
-   * 利用権を ID で取得（転送バリデーション用）
-   * transferable / transferCount / maxTransferCount / transferCutoffAt を含む
+   * 利用権を ID で取得する。
    */
   async findById(id: string) {
     return this.prisma.usageRight.findUnique({
@@ -157,7 +168,6 @@ export class UsageRightService {
   async listByUser(input: { userId?: string; walletAddress?: string }) {
     const userId = await this.userService.resolveUserId(input);
     if (!userId) {
-      // walletAddress からユーザーが特定できない場合は 404 相当を返す
       throw new HttpException(
         { message: 'ユーザーが見つかりません' },
         HttpStatus.NOT_FOUND,
@@ -240,27 +250,32 @@ export class UsageRightService {
       where: { id: usageRightId },
     });
     if (!right) return null;
-    // MINTED / LISTED 状態のみキャンセル可能
     if (!['MINTED', 'LISTED'].includes(right.status)) return null;
 
-    const cancelled = await this.prisma.usageRight.update({
+    if (!right.onchainTokenId) {
+      this.logger.warn(`[usage-right.cancel] tokenId missing rightId=${right.id}`);
+      throw new HttpException(
+        { message: 'オンチェーンToken IDが未設定です' },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+
+    const tokenId = BigInt(right.onchainTokenId);
+    this.logger.log(`[usage-right.cancel] start rightId=${right.id} tokenId=${tokenId.toString()}`);
+    const txHash = await this.usageRightContract.cancelUsageRight(tokenId);
+    if (!txHash) {
+      this.logger.error(`[usage-right.cancel] onchain cancel failed rightId=${right.id}`);
+      throw new HttpException(
+        { message: 'オンチェーン取消に失敗しました' },
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+    this.logger.log(`[usage-right.cancel] onchain done rightId=${right.id} txHash=${txHash}`);
+
+    return this.prisma.usageRight.update({
       where: { id: usageRightId },
       data: { status: 'CANCELLED' },
     });
-
-    // オンチェーン tokenId が存在する場合のみキャンセルトランザクションを発行
-    if (right.onchainTokenId) {
-      const tokenId = BigInt(right.onchainTokenId);
-      this.usageRightContract.cancelUsageRight(tokenId)
-        .then((txHash) => {
-          if (txHash) {
-            this.logger.log(`cancelUsageRight 成功: rightId=${right.id} txHash=${txHash}`);
-          }
-        })
-        .catch((e) => this.logger.error(`cancelUsageRight 後処理失敗: ${e}`));
-    }
-
-    return cancelled;
   }
 
   async transfer(usageRightId: string, newOwnerUserId: string) {
@@ -272,34 +287,57 @@ export class UsageRightService {
     if (right.status !== 'MINTED') return null;
     if (right.transferCount >= right.maxTransferCount) return null;
     if (right.transferCutoffAt && new Date() > right.transferCutoffAt) return null;
+    if (!right.ownerUserId) {
+      throw new HttpException(
+        { message: '現在所有者が未設定です' },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    if (!right.onchainTokenId) {
+      throw new HttpException(
+        { message: 'オンチェーンToken IDが未設定です' },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
 
-    // ウォレットアドレスの場合は userId に解決（FK 制約のため）
     let ownerUserId = newOwnerUserId.trim();
     if (/^0x[0-9a-fA-F]{40}$/.test(ownerUserId)) {
       ownerUserId = await this.userService.findOrCreateByWallet(ownerUserId);
     }
 
-    const updated = await this.prisma.usageRight.update({
+    const [currentOwner, nextOwner] = await Promise.all([
+      this.prisma.user.findUnique({
+        where: { id: right.ownerUserId },
+        select: { walletAddress: true },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: ownerUserId },
+        select: { walletAddress: true },
+      }),
+    ]);
+    const fromWallet = this.requireWalletAddress(currentOwner?.walletAddress, '現在所有者');
+    const toWallet = this.requireWalletAddress(nextOwner?.walletAddress, '新しい所有者');
+    const tokenId = BigInt(right.onchainTokenId);
+
+    this.logger.log(
+      `[usage-right.transfer] start rightId=${right.id} tokenId=${tokenId.toString()} from=${fromWallet} to=${toWallet}`,
+    );
+    const txHash = await this.usageRightContract.transferUsageRight(fromWallet, toWallet, tokenId);
+    if (!txHash) {
+      this.logger.error(`[usage-right.transfer] onchain transfer failed rightId=${right.id}`);
+      throw new HttpException(
+        { message: 'オンチェーン譲渡に失敗しました' },
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+    this.logger.log(`[usage-right.transfer] onchain done rightId=${right.id} txHash=${txHash}`);
+
+    return this.prisma.usageRight.update({
       where: { id: usageRightId },
       data: {
         ownerUserId,
         transferCount: { increment: 1 },
       },
     });
-
-    // オンチェーン tokenId が存在する場合のみ転送トランザクションを発行
-    if (right.onchainTokenId) {
-      const tokenId = BigInt(right.onchainTokenId);
-      // from は現オーナー（ウォレット未取得のため ZeroAddress をフォールバックとして使用）
-      this.usageRightContract.transferUsageRight(ethers.ZeroAddress, ethers.ZeroAddress, tokenId)
-        .then((txHash) => {
-          if (txHash) {
-            this.logger.log(`transferUsageRight 成功: rightId=${right.id} txHash=${txHash}`);
-          }
-        })
-        .catch((e) => this.logger.error(`transferUsageRight 後処理失敗: ${e}`));
-    }
-
-    return updated;
   }
 }

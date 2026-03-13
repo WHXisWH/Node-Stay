@@ -21,6 +21,7 @@ interface BaseTask<TType extends SyncTaskType, TPayload> {
 type BuyListingTask = BaseTask<'BUY_LISTING', {
   listingId: string;
   buyerUserId: string;
+  onchainTxHash: string;
   idempotencyKey: string;
 }>;
 
@@ -29,12 +30,14 @@ type CreateListingTask = BaseTask<'CREATE_LISTING', {
   sellerUserId: string;
   priceJpyc: string;
   expiryAt?: string;
+  onchainTxHash: string;
   idempotencyKey: string;
 }>;
 
 type CancelListingTask = BaseTask<'CANCEL_LISTING', {
   listingId: string;
   userId: string;
+  onchainTxHash: string;
   idempotencyKey: string;
 }>;
 
@@ -152,6 +155,7 @@ class MarketplaceSyncOutboxServiceClass {
         await MarketplaceService.buyListing(
           task.payload.listingId,
           task.payload.buyerUserId,
+          task.payload.onchainTxHash,
           ensureIdempotencyKey(task.payload.idempotencyKey, `buy-${task.id}`),
         );
       } else if (task.type === 'CREATE_LISTING') {
@@ -160,6 +164,7 @@ class MarketplaceSyncOutboxServiceClass {
         await MarketplaceService.cancelListing(
           task.payload.listingId,
           task.payload.userId,
+          task.payload.onchainTxHash,
           ensureIdempotencyKey(task.payload.idempotencyKey, `cancel-${task.id}`),
         );
       }
@@ -243,7 +248,7 @@ class MarketplaceSyncOutboxServiceClass {
   async enqueueBuyListing(payload: BuyListingTask['payload']): Promise<EnqueueResult> {
     const timestamp = now();
     return this.enqueueTask({
-      id: `buy:${payload.listingId}:${payload.idempotencyKey}`,
+      id: `buy:${payload.listingId}:${payload.onchainTxHash}`,
       type: 'BUY_LISTING',
       payload,
       attempts: 0,
@@ -257,7 +262,7 @@ class MarketplaceSyncOutboxServiceClass {
   async enqueueCreateListing(payload: CreateListingTask['payload']): Promise<EnqueueResult> {
     const timestamp = now();
     return this.enqueueTask({
-      id: `create:${payload.usageRightId}:${payload.idempotencyKey}`,
+      id: `create:${payload.usageRightId}:${payload.onchainTxHash}`,
       type: 'CREATE_LISTING',
       payload,
       attempts: 0,
@@ -271,7 +276,7 @@ class MarketplaceSyncOutboxServiceClass {
   async enqueueCancelListing(payload: CancelListingTask['payload']): Promise<EnqueueResult> {
     const timestamp = now();
     return this.enqueueTask({
-      id: `cancel:${payload.listingId}:${payload.idempotencyKey}`,
+      id: `cancel:${payload.listingId}:${payload.onchainTxHash}`,
       type: 'CANCEL_LISTING',
       payload,
       attempts: 0,

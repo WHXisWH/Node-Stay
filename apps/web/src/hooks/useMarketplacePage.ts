@@ -106,7 +106,7 @@ export function useMarketplacePage(): UseMarketplacePageReturn {
         listingType: 'USAGE' as ListingType,
         planName: item.usageRight?.usageProduct?.productName ?? '利用権',
         // API に venueName フィールドがないためフォールバック
-        venueName: '',
+        venueName: item.venueName ?? '店舗',
         venueAddress: '',
         durationMinutes: item.usageRight?.usageProduct?.durationMinutes ?? 0,
         remainingMinutes: item.usageRight?.usageProduct?.durationMinutes ?? 0,
@@ -173,10 +173,15 @@ export function useMarketplacePage(): UseMarketplacePageReturn {
     setPurchaseSuccess(false);
 
     // オンチェーンは onchainListingId（数値）を使用。DB は listingId（UUID）を使用。
-    const onchainListingId = buyingListing.onchainTokenId ?? buyingListing.listingId;
+    const onchainListingId = buyingListing.onchainTokenId;
     const dbListingId      = buyingListing.listingId;
     const priceMinor       = String(buyingListing.priceMinor);
     const idempotencyKey   = `buy-${dbListingId}-${Date.now()}`;
+
+    if (!onchainListingId) {
+      setPurchaseError('オンチェーンListing IDが未設定です');
+      return;
+    }
 
     let txHash: string | null = null;
 
@@ -194,6 +199,7 @@ export function useMarketplacePage(): UseMarketplacePageReturn {
       const syncResult = await MarketplaceSyncOutboxService.enqueueBuyListing({
         listingId:    dbListingId,
         buyerUserId:  walletAddress,
+        onchainTxHash: txHash,
         idempotencyKey,
       });
       if (syncResult.state === 'failed') {

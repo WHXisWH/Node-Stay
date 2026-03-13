@@ -25,7 +25,13 @@ services:
         generateValue: true
       - key: ENABLE_COMPUTE_MARKET
         value: "true"
+      - key: ENABLE_COMPUTE_ONCHAIN_WRITE
+        value: "false"
       - key: ENABLE_TRANSFER_MARKET
+        value: "true"
+      - key: STRICT_ONCHAIN_MODE
+        value: "true"
+      - key: ENABLE_DEMO_SEED
         value: "false"
       - key: AMOY_RPC_URL
         value: https://rpc-amoy.polygon.technology
@@ -61,7 +67,13 @@ services:
         sync: false
       - key: ENABLE_COMPUTE_MARKET
         value: "true"
+      - key: ENABLE_COMPUTE_ONCHAIN_WRITE
+        value: "false"
       - key: ENABLE_TRANSFER_MARKET
+        value: "true"
+      - key: STRICT_ONCHAIN_MODE
+        value: "true"
+      - key: ENABLE_DEMO_SEED
         value: "false"
       - key: AMOY_RPC_URL
         value: https://rpc-amoy.polygon.technology
@@ -97,7 +109,13 @@ services:
         sync: false
       - key: ENABLE_COMPUTE_MARKET
         value: "true"
+      - key: ENABLE_COMPUTE_ONCHAIN_WRITE
+        value: "false"
       - key: ENABLE_TRANSFER_MARKET
+        value: "true"
+      - key: STRICT_ONCHAIN_MODE
+        value: "true"
+      - key: ENABLE_DEMO_SEED
         value: "false"
       - key: AMOY_RPC_URL
         value: https://rpc-amoy.polygon.technology

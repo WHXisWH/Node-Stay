@@ -21,6 +21,11 @@ export class VenueService implements OnModuleInit {
 
   // 初回起動時にデモデータを投入（DBが空の場合のみ）
   async onModuleInit() {
+    const enableSeed = process.env.ENABLE_DEMO_SEED === 'true';
+    if (!enableSeed) {
+      this.logger.log('デモデータ投入は無効です（ENABLE_DEMO_SEED=false）');
+      return;
+    }
     try {
       const count = await this.prisma.venue.count();
       if (count === 0) await this.seed();

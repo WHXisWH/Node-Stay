@@ -77,6 +77,7 @@ export function usePassesPage(): UsePassesPageReturn {
           usageRightId: listingRight.usageRightId,
           sellerUserId: walletAddress,
           priceJpyc: price,
+          onchainTxHash: txHash,
           idempotencyKey: crypto.randomUUID(),
         });
         setListingRight(null);
@@ -96,7 +97,11 @@ export function usePassesPage(): UsePassesPageReturn {
     try {
       const txHash = await chainCancelListing(cancelListingRight.onchainListingId);
       if (txHash) {
-        await MarketplaceService.cancelListing(cancelListingRight.listingId, walletAddress);
+        await MarketplaceService.cancelListing(
+          cancelListingRight.listingId,
+          walletAddress,
+          txHash,
+        );
         setCancelListingRight(null);
         await loadUsageRights();
       }

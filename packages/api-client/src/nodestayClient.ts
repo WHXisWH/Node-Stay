@@ -406,6 +406,7 @@ export class NodeStayClient {
     soldAt: string | null;
     onchainListingId: string | null;
     onchainTxHash: string | null;
+    venueName?: string | null;
     usageRight: {
       id: string;
       status: string;
@@ -435,6 +436,7 @@ export class NodeStayClient {
       sellerUserId?: string;
       priceJpyc: string;
       expiryAt?: string;
+      onchainTxHash: string;
     },
     idempotencyKey: string,
   ): Promise<{
@@ -462,6 +464,7 @@ export class NodeStayClient {
   async cancelMarketplaceListing(
     listingId: string,
     userId: string,
+    onchainTxHash: string,
     idempotencyKey: string,
   ): Promise<{
     id: string;
@@ -474,7 +477,7 @@ export class NodeStayClient {
         'content-type': 'application/json',
         'idempotency-key': normalizeIdempotencyKey(idempotencyKey),
       },
-      body: JSON.stringify({ userId }),
+      body: JSON.stringify({ userId, onchainTxHash }),
     });
   }
 
@@ -482,6 +485,7 @@ export class NodeStayClient {
   async buyMarketplaceListing(
     listingId: string,
     buyerUserId: string,
+    onchainTxHash: string,
     idempotencyKey: string,
   ): Promise<{
     id: string;
@@ -495,7 +499,7 @@ export class NodeStayClient {
         'content-type': 'application/json',
         'idempotency-key': normalizeIdempotencyKey(idempotencyKey),
       },
-      body: JSON.stringify({ buyerUserId }),
+      body: JSON.stringify({ buyerUserId, onchainTxHash }),
     });
   }
 
