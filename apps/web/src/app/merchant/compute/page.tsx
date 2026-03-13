@@ -591,6 +591,7 @@ export default function MerchantComputePage() {
     setEditingNode,
     saving,
     saveSuccess,
+    saveError,
     handleToggle,
     handleSave,
   } = useMerchantCompute();
@@ -654,6 +655,11 @@ export default function MerchantComputePage() {
               </svg>
             </div>
             <p className="font-semibold text-emerald-800">設定を保存しました</p>
+          </div>
+        )}
+        {saveError && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+            <p className="text-sm font-semibold text-red-700">{saveError}</p>
           </div>
         )}
 

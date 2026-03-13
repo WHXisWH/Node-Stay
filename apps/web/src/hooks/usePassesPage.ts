@@ -47,16 +47,25 @@ export function usePassesPage(): UsePassesPageReturn {
     listUsageRight,
     cancelListing: chainCancelListing,
     pending: listPending,
-    error: listError,
+    error: chainWriteError,
   } = useMarketplaceWrite();
 
   const [activeFilter, setActiveFilter] = useState<UsageRightFilterKey>('active');
   const [qrRight, setQrRight] = useState<UsageRight | null>(null);
   const [listingRight, setListingRight] = useState<UsageRight | null>(null);
   const [listPriceMinor, setListPriceMinor] = useState('');
+  const [listingLocalError, setListingLocalError] = useState<string | null>(null);
   const [cancelListingRight, setCancelListingRight] = useState<UsageRight | null>(null);
   const [cancelListingPending, setCancelListingPending] = useState(false);
   const [cancelListingError, setCancelListingError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!listingRight) setListingLocalError(null);
+  }, [listingRight]);
+
+  useEffect(() => {
+    if (!cancelListingRight) setCancelListingError(null);
+  }, [cancelListingRight]);
 
   const loadUsageRights = useCallback(() => UsageRightService.loadList(walletAddress ?? null), [walletAddress]);
   const refresh = useCallback(async () => {
@@ -68,43 +77,71 @@ export function usePassesPage(): UsePassesPageReturn {
   }, [loadUsageRights]);
 
   const handleConfirmListToMarket = useCallback(async () => {
-    if (!listingRight?.onchainTokenId || !listPriceMinor.trim() || !walletAddress) return;
-    const price = listPriceMinor.trim();
-    const txHash = await listUsageRight(listingRight.onchainTokenId, price);
-    if (txHash) {
-      try {
-        await MarketplaceService.createListing({
-          usageRightId: listingRight.usageRightId,
-          sellerUserId: walletAddress,
-          priceJpyc: price,
-          onchainTxHash: txHash,
-          idempotencyKey: crypto.randomUUID(),
-        });
-        setListingRight(null);
-        setListPriceMinor('');
-        await loadUsageRights();
-      } catch (e) {
-        // オンチェーン成功だが API 失敗はコンソールに記録
-        console.error('createListing API failed', e);
-      }
+    setListingLocalError(null);
+    if (!walletAddress) {
+      setListingLocalError('ウォレット未接続のため出品できません');
+      return;
     }
-  }, [listingRight, listPriceMinor, walletAddress, listUsageRight, loadUsageRights]);
+    if (!listingRight?.onchainTokenId) {
+      setListingLocalError('オンチェーン tokenId がないため出品できません');
+      return;
+    }
+    const price = listPriceMinor.trim();
+    if (!/^\d+$/.test(price) || Number(price) <= 0) {
+      setListingLocalError('出品価格は 1 以上の整数で入力してください');
+      return;
+    }
+
+    const txHash = await listUsageRight(listingRight.onchainTokenId, price);
+    if (!txHash) {
+      setListingLocalError(chainWriteError ?? '出品トランザクションの送信に失敗しました');
+      return;
+    }
+
+    try {
+      await MarketplaceService.createListing({
+        usageRightId: listingRight.usageRightId,
+        sellerUserId: walletAddress,
+        priceJpyc: price,
+        onchainTxHash: txHash,
+        idempotencyKey: crypto.randomUUID(),
+      });
+      setListingRight(null);
+      setListPriceMinor('');
+      await loadUsageRights();
+    } catch (e) {
+      setListingLocalError(
+        'オンチェーン出品は成功しましたが、マーケット登録 API に失敗しました。再読み込みして状態を確認してください',
+      );
+      // オンチェーン成功後の API 不整合を調査できるように記録する。
+      console.error('createListing API failed', e);
+    }
+  }, [listingRight, listPriceMinor, walletAddress, listUsageRight, loadUsageRights, chainWriteError]);
 
   const handleConfirmCancelListing = useCallback(async () => {
-    if (!cancelListingRight?.listingId || !cancelListingRight?.onchainListingId || !walletAddress) return;
+    if (!walletAddress) {
+      setCancelListingError('ウォレット未接続のため出品取消できません');
+      return;
+    }
+    if (!cancelListingRight?.listingId || !cancelListingRight?.onchainListingId) {
+      setCancelListingError('出品情報が不足しているため取消できません');
+      return;
+    }
     setCancelListingPending(true);
     setCancelListingError(null);
     try {
       const txHash = await chainCancelListing(cancelListingRight.onchainListingId);
-      if (txHash) {
-        await MarketplaceService.cancelListing(
-          cancelListingRight.listingId,
-          walletAddress,
-          txHash,
-        );
-        setCancelListingRight(null);
-        await loadUsageRights();
+      if (!txHash) {
+        setCancelListingError('出品取消トランザクションの送信に失敗しました');
+        return;
       }
+      await MarketplaceService.cancelListing(
+        cancelListingRight.listingId,
+        walletAddress,
+        txHash,
+      );
+      setCancelListingRight(null);
+      await loadUsageRights();
     } catch (e) {
       setCancelListingError(e instanceof Error ? e.message : 'キャンセルに失敗しました');
     } finally {
@@ -145,7 +182,7 @@ export function usePassesPage(): UsePassesPageReturn {
     setListPriceMinor,
     handleConfirmListToMarket,
     listingPending: listPending,
-    listingError: listError,
+    listingError: listingLocalError ?? chainWriteError,
     cancelListingRight,
     setCancelListingRight,
     handleConfirmCancelListing,

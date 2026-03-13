@@ -221,7 +221,8 @@ export default function UsageRightDetailPage() {
   const canTransferByState = !!right
     && right.status === 'ACTIVE'
     && right.transferable
-    && right.transferCount < right.maxTransferCount;
+    && right.transferCount < right.maxTransferCount
+    && (!right.transferCutoff || Date.now() < new Date(right.transferCutoff).getTime());
 
   useEffect(() => {
     if (transferModalRequested && canTransferByState) {
@@ -259,7 +260,20 @@ export default function UsageRightDetailPage() {
 
   const statusCfg = STATUS_CONFIG[right.status];
   const isActive = right.status === 'ACTIVE';
-  const canTransfer = isActive && right.transferable && right.transferCount < right.maxTransferCount;
+  const transferCutoffMs = right.transferCutoff ? new Date(right.transferCutoff).getTime() : null;
+  const isTransferCutoffPassed = transferCutoffMs != null && Number.isFinite(transferCutoffMs) && Date.now() >= transferCutoffMs;
+  const canTransfer = isActive
+    && right.transferable
+    && right.transferCount < right.maxTransferCount
+    && !isTransferCutoffPassed;
+  const transferDisabledReason =
+    !right.transferable
+      ? 'この利用権は譲渡不可です'
+      : right.transferCount >= right.maxTransferCount
+        ? '最大譲渡回数に達しています'
+        : isTransferCutoffPassed
+          ? '譲渡期限を過ぎています'
+          : null;
   const canCancel = right.status === 'ACTIVE' || right.status === 'PENDING';
   const isFinished = right.status === 'CONSUMED' || right.status === 'EXPIRED' || right.status === 'TRANSFERRED';
   const expiresAtMs = new Date(right.expiresAt).getTime();
@@ -380,6 +394,11 @@ export default function UsageRightDetailPage() {
                   </svg>
                   利用権を譲渡する
                 </button>
+              )}
+              {!canTransfer && isActive && transferDisabledReason && (
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  {transferDisabledReason}
+                </p>
               )}
 
               {/* キャンセルボタン */}

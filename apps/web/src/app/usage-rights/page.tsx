@@ -118,15 +118,153 @@ function QrModal({
   );
 }
 
+// ===== 市場出品モーダル =====
+function ListToMarketModal({
+  right,
+  priceMinor,
+  onChangePrice,
+  onClose,
+  onConfirm,
+  pending,
+  error,
+}: {
+  right: UsageRight;
+  priceMinor: string;
+  onChangePrice: (value: string) => void;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+  pending: boolean;
+  error: string | null;
+}) {
+  const normalizedPrice = priceMinor.trim();
+  const isValidPrice = /^\d+$/.test(normalizedPrice) && Number(normalizedPrice) > 0;
+
+  return (
+    <Modal
+      isOpen={!!right}
+      onClose={onClose}
+      title="利用権を市場に出品する"
+      description="オンチェーン取引後にマーケットへ反映されます"
+      size="sm"
+      footer={(
+        <>
+          <button onClick={onClose} className="btn-secondary" disabled={pending}>キャンセル</button>
+          <button
+            onClick={() => void onConfirm()}
+            className="btn-primary"
+            disabled={!isValidPrice || pending}
+          >
+            {pending ? '出品中...' : '出品を実行'}
+          </button>
+        </>
+      )}
+    >
+      <div className="space-y-4">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <p className="text-sm font-semibold text-slate-800">{right.planName}</p>
+          <p className="text-xs text-slate-500 mt-0.5">{right.venueName}</p>
+          <p className="text-xs text-slate-500 mt-2">
+            Token ID: {right.onchainTokenId ? `#${right.onchainTokenId}` : '未登録'}
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-semibold text-slate-700 mb-1.5">
+            出品価格（JPYC minor）
+          </label>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            value={priceMinor}
+            onChange={(e) => onChangePrice(e.target.value)}
+            placeholder="例: 1200"
+            className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-400"
+          />
+          <p className="text-xs text-slate-500 mt-1.5">
+            1 JPYC = 100 minor。整数のみ入力してください。
+          </p>
+        </div>
+
+        {error && (
+          <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            {error}
+          </p>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// ===== 出品取消モーダル =====
+function CancelListingModal({
+  right,
+  onClose,
+  onConfirm,
+  pending,
+  error,
+}: {
+  right: UsageRight;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+  pending: boolean;
+  error: string | null;
+}) {
+  return (
+    <Modal
+      isOpen={!!right}
+      onClose={onClose}
+      title="出品を取り消す"
+      description="オンチェーン取消トランザクションを実行します"
+      size="sm"
+      footer={(
+        <>
+          <button onClick={onClose} className="btn-secondary" disabled={pending}>戻る</button>
+          <button onClick={() => void onConfirm()} className="btn-primary" disabled={pending}>
+            {pending ? '取消中...' : '取消を実行'}
+          </button>
+        </>
+      )}
+    >
+      <div className="space-y-3">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <p className="text-sm font-semibold text-slate-800">{right.planName}</p>
+          <p className="text-xs text-slate-500 mt-0.5">{right.venueName}</p>
+        </div>
+        <p className="text-sm text-slate-600">
+          この利用権の出品を取り消してもよろしいですか？
+        </p>
+        {error && (
+          <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            {error}
+          </p>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 // ===== 利用権カードコンポーネント =====
-function UsageRightCard({ right, onShowQr }: { right: UsageRight; onShowQr: (r: UsageRight) => void }) {
+function UsageRightCard({
+  right,
+  onShowQr,
+  onOpenListing,
+  onOpenCancelListing,
+}: {
+  right: UsageRight;
+  onShowQr: (r: UsageRight) => void;
+  onOpenListing: (r: UsageRight) => void;
+  onOpenCancelListing: (r: UsageRight) => void;
+}) {
   const statusCfg = STATUS_CONFIG[right.status];
-  const isActive = right.status === 'ACTIVE' || right.status === 'IN_USE';
+  const isUsable = right.status === 'ACTIVE' || right.status === 'IN_USE';
+  const isListed = right.status === 'LISTED';
+  const isInteractive = isUsable || isListed;
 
   return (
     <div
       className={`card p-5 flex flex-col gap-4 ${
-        !isActive ? 'opacity-60' : ''
+        !isInteractive ? 'opacity-60' : ''
       }`}
     >
       {/* ヘッダー：プラン名・ステータス */}
@@ -142,7 +280,7 @@ function UsageRightCard({ right, onShowQr }: { right: UsageRight; onShowQr: (r: 
       </div>
 
       {/* 残り時間プログレスバー */}
-      {isActive && (
+      {isInteractive && (
         <div>
           <div className="flex justify-between text-xs text-slate-500 mb-1.5">
             <span>残り利用時間</span>
@@ -203,35 +341,60 @@ function UsageRightCard({ right, onShowQr }: { right: UsageRight; onShowQr: (r: 
       </div>
 
       {/* アクションボタン */}
-      {isActive && (
-        <div className="flex gap-2 pt-1">
-          {/* チェックインQRボタン */}
-          <button
-            onClick={() => onShowQr(right)}
-            className="btn-primary flex-1 py-2.5 text-sm"
-          >
-            QR でチェックイン
-          </button>
-
-          {/* 譲渡ボタン（譲渡可能な場合のみ） */}
-          {right.transferable && right.status === 'ACTIVE' && (
-            <Link
-              href={`/usage-rights/${right.usageRightId}?modal=transfer`}
-              className="btn-secondary py-2.5 px-3 text-sm"
-            >
-              <svg
-                width="15"
-                height="15"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+      {isInteractive && (
+        <div className="flex flex-col gap-2 pt-1">
+          {isUsable && (
+            <div className="flex gap-2">
+              {/* チェックインQRボタン */}
+              <button
+                onClick={() => onShowQr(right)}
+                className="btn-primary flex-1 py-2.5 text-sm"
               >
-                <path d="M5 12H19" />
-                <path d="M12 5l7 7-7 7" />
-              </svg>
-            </Link>
+                QR でチェックイン
+              </button>
+
+              {/* 譲渡ボタン（譲渡可能な場合のみ） */}
+              {right.transferable && right.status === 'ACTIVE' && (
+                <Link
+                  href={`/usage-rights/${right.usageRightId}?modal=transfer`}
+                  className="btn-secondary py-2.5 px-3 text-sm"
+                >
+                  <svg
+                    width="15"
+                    height="15"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M5 12H19" />
+                    <path d="M12 5l7 7-7 7" />
+                  </svg>
+                </Link>
+              )}
+            </div>
+          )}
+
+          {/* 市場出品ボタン */}
+          {right.status === 'ACTIVE' && (
+            <button
+              onClick={() => onOpenListing(right)}
+              disabled={!right.onchainTokenId}
+              className="btn-secondary w-full py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {right.onchainTokenId ? '市場に出品する' : 'オンチェーン未登録のため出品不可'}
+            </button>
+          )}
+
+          {/* 出品取消ボタン */}
+          {isListed && (
+            <button
+              onClick={() => onOpenCancelListing(right)}
+              className="w-full py-2.5 text-sm font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 rounded-xl border border-red-200 transition-colors"
+            >
+              出品を取り消す
+            </button>
           )}
         </div>
       )}
@@ -248,7 +411,26 @@ const FILTER_TABS: { key: 'all' | 'active' | 'history'; label: string }[] = [
 
 // ===== ページコンポーネント =====
 export default function UsageRightsPage() {
-  const { filtered, activeFilter, setActiveFilter, activeCount, qrRight, setQrRight } = usePassesPage();
+  const {
+    filtered,
+    activeFilter,
+    setActiveFilter,
+    activeCount,
+    qrRight,
+    setQrRight,
+    listingRight,
+    setListingRight,
+    listPriceMinor,
+    setListPriceMinor,
+    handleConfirmListToMarket,
+    listingPending,
+    listingError,
+    cancelListingRight,
+    setCancelListingRight,
+    handleConfirmCancelListing,
+    cancelListingPending,
+    cancelListingError,
+  } = usePassesPage();
   const { balance, isAuthenticated } = useUserState();
 
   return (
@@ -321,7 +503,16 @@ export default function UsageRightsPage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {filtered.map((right) => (
-              <UsageRightCard key={right.usageRightId} right={right} onShowQr={setQrRight} />
+              <UsageRightCard
+                key={right.usageRightId}
+                right={right}
+                onShowQr={setQrRight}
+                onOpenListing={(target) => {
+                  setListPriceMinor('');
+                  setListingRight(target);
+                }}
+                onOpenCancelListing={setCancelListingRight}
+              />
             ))}
           </div>
         )}
@@ -356,6 +547,30 @@ export default function UsageRightsPage() {
       {/* QRコードモーダル */}
       {qrRight && (
         <QrModal isOpen={!!qrRight} right={qrRight} onClose={() => setQrRight(null)} />
+      )}
+
+      {/* 市場出品モーダル */}
+      {listingRight && (
+        <ListToMarketModal
+          right={listingRight}
+          priceMinor={listPriceMinor}
+          onChangePrice={setListPriceMinor}
+          onClose={() => setListingRight(null)}
+          onConfirm={handleConfirmListToMarket}
+          pending={listingPending}
+          error={listingError}
+        />
+      )}
+
+      {/* 出品取消モーダル */}
+      {cancelListingRight && (
+        <CancelListingModal
+          right={cancelListingRight}
+          onClose={() => setCancelListingRight(null)}
+          onConfirm={handleConfirmCancelListing}
+          pending={cancelListingPending}
+          error={cancelListingError}
+        />
       )}
     </>
   );

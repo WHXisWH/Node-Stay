@@ -2,7 +2,7 @@
 
 // コンピュートマーケットページ（View 層：useComputePage の戻り値を表示のみ、SPEC V3）
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useComputePage } from '../../hooks';
 import { useJPYCTransfer } from '../../hooks/useJPYC';
@@ -40,6 +40,28 @@ const JOB_STATUS_CONFIG: Record<JobStatus, { label: string; badge: string }> = {
 // JPYCフォーマット
 function formatJPYC(minor: number): string {
   return (minor / 100).toLocaleString('ja-JP');
+}
+
+function parseJobSubmitError(error: unknown): string {
+  const fallback = 'ジョブ送信に失敗しました。時間をおいて再試行してください。';
+  if (!(error instanceof Error)) return fallback;
+
+  const raw = error.message;
+  const jsonStart = raw.indexOf('{');
+  if (jsonStart >= 0) {
+    try {
+      const parsed = JSON.parse(raw.slice(jsonStart)) as { message?: string };
+      if (parsed.message && parsed.message.trim()) return parsed.message;
+    } catch {
+      // JSON を含まない場合は下の分岐にフォールバックする。
+    }
+  }
+
+  if (raw.includes('ウォレット未接続')) return raw;
+  if (raw.includes('NEXT_PUBLIC_COMPUTE_RIGHT_ADDRESS')) return 'コンピュート決済先アドレスが未設定です。環境変数を確認してください。';
+  if (raw.includes('501')) return 'コンピュート購入は現在停止中です（サーバー側 501）。';
+  if (raw.includes('403')) return '権限不足のためジョブ送信できません。ウォレット・ログイン状態を確認してください。';
+  return raw || fallback;
 }
 
 // ===== 統計バナー =====
@@ -196,11 +218,13 @@ function JobSubmitModal({
   onClose,
   onSubmit,
   submitting,
+  error,
 }: {
   node: ComputeNode;
   onClose: () => void;
   onSubmit: (hours: number, taskType: TaskType) => void;
   submitting: boolean;
+  error: string | null;
 }) {
   // 予約時間の状態
   const [hours, setHours] = useState(node.minBookingHours);
@@ -318,6 +342,12 @@ function JobSubmitModal({
           ※ 送信時に JPYC を算力権コントラクトへ支払い、支払い tx を検証後にジョブを作成します。
         </p>
 
+        {error && (
+          <p className="mb-5 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            {error}
+          </p>
+        )}
+
         {/* ボタン */}
         <div className="flex gap-3">
           <button onClick={onClose} className="btn-secondary flex-1" disabled={submitting}>
@@ -426,9 +456,20 @@ export default function ComputePage() {
     submitJob,
   } = useComputePage();
   const { transferJpyc, isTransferring, isConfirming } = useJPYCTransfer();
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!bookingNode) setSubmitError(null);
+  }, [bookingNode]);
+
+  const handleCloseBooking = () => {
+    setSubmitError(null);
+    closeBooking();
+  };
 
   const handleSubmitJob = async (hours: number, taskType: TaskType) => {
     if (!bookingNode) return;
+    setSubmitError(null);
     try {
       const computeRight = CONTRACT_ADDRESSES.computeRight as `0x${string}`;
       if (!computeRight || !computeRight.startsWith('0x')) {
@@ -445,8 +486,9 @@ export default function ComputePage() {
         taskType,
         paymentTxHash,
       });
-    } catch {
-      // エラー文言は compute.store 側に保存され、画面バナーで表示される
+    } catch (e) {
+      // transfer/submit どちらの失敗でもモーダル内で原因を可視化する。
+      setSubmitError(parseJobSubmitError(e));
     }
   };
 
@@ -746,9 +788,10 @@ export default function ComputePage() {
       {bookingNode && (
         <JobSubmitModal
           node={bookingNode}
-          onClose={closeBooking}
+          onClose={handleCloseBooking}
           onSubmit={handleSubmitJob}
           submitting={submitting || isTransferring || isConfirming}
+          error={submitError}
         />
       )}
     </>

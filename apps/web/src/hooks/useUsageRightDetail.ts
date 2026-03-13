@@ -98,6 +98,31 @@ function toMinorFromPriceJpyc(priceJpyc: string | undefined): number {
   return Math.max(0, Math.round(n * 100));
 }
 
+function parseApiErrorMessage(error: unknown): string {
+  const fallback = '譲渡処理に失敗しました。しばらく経ってから再試行してください。';
+  const raw = error instanceof Error ? error.message : '';
+  if (!raw) return fallback;
+
+  // API エラーの JSON 本文（{"message":"..."}）を優先表示する。
+  const jsonStart = raw.indexOf('{');
+  if (jsonStart >= 0) {
+    const jsonText = raw.slice(jsonStart);
+    try {
+      const parsed = JSON.parse(jsonText) as { message?: string };
+      if (parsed.message && parsed.message.trim()) {
+        return parsed.message;
+      }
+    } catch {
+      // JSON でない場合は下の分岐で処理する。
+    }
+  }
+
+  if (raw.includes('403')) return '譲渡条件を満たしていないため実行できません。譲渡期限・回数をご確認ください。';
+  if (raw.includes('404')) return '利用権が見つかりません。ページを更新してください。';
+  if (raw.includes('401')) return 'ログイン状態が無効です。再ログインしてください。';
+  return fallback;
+}
+
 export function useUsageRightDetail(id: string | undefined): UseUsageRightDetailReturn {
   const [right, setRight] = useState<UsageRightDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -212,6 +237,13 @@ export function useUsageRightDetail(id: string | undefined): UseUsageRightDetail
       return;
     }
     if (!id) return;
+    if (right?.transferCutoff) {
+      const cutoffMs = new Date(right.transferCutoff).getTime();
+      if (Number.isFinite(cutoffMs) && Date.now() >= cutoffMs) {
+        setTransferError('譲渡期限を過ぎているため、この利用権は譲渡できません。');
+        return;
+      }
+    }
 
     setTransferring(true);
     setTransferError(null);
@@ -223,8 +255,8 @@ export function useUsageRightDetail(id: string | undefined): UseUsageRightDetail
       setShowTransfer(false);
       // 譲渡成功後に詳細を再取得して状態を同期する
       await loadDetail();
-    } catch {
-      setTransferError('譲渡処理に失敗しました。しばらく経ってから再試行してください。');
+    } catch (error) {
+      setTransferError(parseApiErrorMessage(error));
     } finally {
       setTransferring(false);
     }
