@@ -15,8 +15,9 @@ function SearchBar({
 }) {
   return (
     <div className="relative">
+      {/* 検索アイコン */}
       <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-        <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="11" cy="11" r="8" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
@@ -44,8 +45,9 @@ function VenueCard({ venue }: { venue: VenueListItem }) {
               {venue.name}
             </h3>
           </div>
+          {/* 住所表示（ロケーションアイコン付き） */}
           <p className="text-sm text-slate-500 flex items-center gap-1">
-            <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
               <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z" />
               <circle cx="12" cy="10" r="3" />
             </svg>
@@ -68,8 +70,9 @@ function VenueCard({ venue }: { venue: VenueListItem }) {
             <span className="text-slate-400 font-normal text-xs ml-1">/ 3時間</span>
           </div>
         </div>
+        {/* 詳細ページへの矢印アイコン */}
         <div className="w-8 h-8 rounded-lg bg-brand-50 flex items-center justify-center text-brand-500 group-hover:bg-brand-100 transition-colors">
-          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="5" y1="12" x2="19" y2="12" />
             <polyline points="12 5 19 12 12 19" />
           </svg>
