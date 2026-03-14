@@ -11,6 +11,25 @@ import { useUserStore } from '../stores/user.store';
 import type { TaskFilter } from '../stores/compute.store';
 import { createNodeStayClient } from './nodestay';
 
+function normalizeTaskType(taskType: string | null | undefined): ComputeJob['taskType'] {
+  const normalized = (taskType ?? '').toUpperCase();
+  if (normalized === 'ML_TRAINING') return 'ML_TRAINING';
+  if (normalized === 'RENDERING') return 'RENDERING';
+  if (normalized === 'ZK_PROVING') return 'ZK_PROVING';
+  return 'GENERAL';
+}
+
+function normalizeJobStatus(status: string | null | undefined): ComputeJob['status'] {
+  const normalized = (status ?? '').toUpperCase();
+  if (normalized === 'PENDING') return 'PENDING';
+  if (normalized === 'ASSIGNED') return 'ASSIGNED';
+  if (normalized === 'RUNNING') return 'RUNNING';
+  if (normalized === 'COMPLETED') return 'COMPLETED';
+  if (normalized === 'FAILED') return 'FAILED';
+  if (normalized === 'CANCELLED') return 'CANCELLED';
+  return 'PENDING';
+}
+
 /** Map API node item to app ComputeNode (minimal; IndexedDB/Chain fills rest) */
 function toComputeNode(item: {
   nodeId: string;
@@ -131,7 +150,7 @@ export const ComputeService = {
   async submitJob(
     params: SubmitJobInput & { requesterId?: string },
     client?: NodeStayClient
-  ): Promise<{ jobId: string }> {
+  ): Promise<{ jobId: string; paymentTxHash: string | null; onchainTxHash: string | null }> {
     const c = client ?? createNodeStayClient();
     const { bookingNodeId } = getComputeStore();
     setComputeStore({ submitting: true, error: null });
@@ -170,13 +189,15 @@ export const ComputeService = {
         jobId: res.jobId,
         requesterId: params.requesterId ?? requesterWallet,
         nodeId: params.nodeId,
-        taskType: params.taskType as ComputeJob['taskType'],
+        taskType: normalizeTaskType(params.taskType),
         taskSpec,
         status: 'PENDING',
         estimatedHours: params.estimatedHours,
         priceMinor: (node?.pricePerHourMinor ?? 0) * params.estimatedHours,
         depositMinor: Math.floor(((node?.pricePerHourMinor ?? 0) * params.estimatedHours) * 0.2),
         venueName: node?.venueName,
+        paymentTxHash: params.paymentTxHash ?? null,
+        onchainTxHash: res.onchainTxHash ?? null,
       };
 
       const prevJobs = getComputeStore().myJobs;
@@ -185,7 +206,7 @@ export const ComputeService = {
       });
       setComputeStore({ submitting: false, submitSuccess: true, bookingNodeId: null });
       setTimeout(() => setComputeStore({ submitSuccess: false }), 5000);
-      return { jobId: res.jobId };
+      return { jobId: res.jobId, paymentTxHash: params.paymentTxHash ?? null, onchainTxHash: res.onchainTxHash ?? null };
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Submit job failed';
       setComputeStore({ submitting: false, error: msg });
@@ -212,7 +233,36 @@ export const ComputeService = {
   async syncMyJobs(client?: NodeStayClient): Promise<void> {
     const c = client ?? createNodeStayClient();
     const current = getComputeStore().myJobs;
-    if (current.length === 0) return;
+    const currentMap = new Map(current.map((job) => [job.jobId, job] as const));
+
+    try {
+      const list = await c.listComputeJobs();
+      const refreshed: ComputeJob[] = list.map((job) => {
+        const prev = currentMap.get(job.jobId);
+        return {
+          ...prev,
+          jobId: job.jobId,
+          requesterId: prev?.requesterId,
+          nodeId: job.nodeId ?? prev?.nodeId,
+          taskType: normalizeTaskType(job.taskType ?? prev?.taskType),
+          status: normalizeJobStatus(job.status),
+          estimatedHours: Number.isInteger(job.estimatedHours) && job.estimatedHours > 0
+            ? job.estimatedHours
+            : (prev?.estimatedHours ?? 1),
+          priceMinor: Number.isFinite(job.priceMinor) ? job.priceMinor : (prev?.priceMinor ?? 0),
+          venueName: job.venueName ?? prev?.venueName,
+          resultHash: job.resultUri ?? prev?.resultHash,
+          startAt: job.startedAt ?? prev?.startAt,
+          endAt: job.endedAt ?? prev?.endAt,
+          paymentTxHash: job.paymentTxHash ?? prev?.paymentTxHash ?? null,
+          onchainTxHash: job.onchainTxHash ?? prev?.onchainTxHash ?? null,
+        };
+      });
+      setComputeStore({ myJobs: refreshed });
+      return;
+    } catch {
+      // 一覧 API が利用不可の場合は既存の個別同期へフォールバックする。
+    }
 
     const refreshed = await Promise.all(
       current.map(async (job) => {
@@ -223,7 +273,7 @@ export const ComputeService = {
           ]);
           const next: ComputeJob = {
             ...job,
-            status: latest.status as ComputeJob['status'],
+            status: normalizeJobStatus(latest.status),
           };
           if (result.resultUri) next.resultHash = result.resultUri;
           return next;

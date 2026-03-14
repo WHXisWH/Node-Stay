@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpException,
   HttpStatus,
@@ -45,6 +46,18 @@ const CreateProgramBody = z.object({
 const ApproveProgramBody = z.object({});
 
 const IssueProgramBody = z.object({});
+const MarketListingBody = z.object({
+  revenueRightId: z.string().min(1, '収益権IDは必須です'),
+  priceJpyc: z.string().regex(/^\d+$/, 'priceJpycは正の整数文字列で指定してください'),
+  expiryAt: z.string().datetime().optional(),
+  onchainTxHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/, 'onchainTxHashの形式が不正です'),
+});
+
+const CancelMarketListingBody = z.object({});
+
+const BuyMarketListingBody = z.object({
+  onchainPaymentTxHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/, 'onchainPaymentTxHashの形式が不正です'),
+});
 
 @Controller('/v1/revenue')
 export class RevenueController {
@@ -140,6 +153,107 @@ export class RevenueController {
   @Get('/claims')
   async getClaims(@CurrentUser() user: AuthenticatedUser) {
     return this.revenue.getClaims({ walletAddress: user.address });
+  }
+
+  @Public()
+  @Get('/market/listings')
+  async listMarketListings(
+    @Query('programId') programId?: string,
+    @Query('includeInactive') includeInactive?: string,
+  ) {
+    return this.revenue.listMarketListings({
+      programId,
+      includeInactive: includeInactive === 'true',
+    });
+  }
+
+  @Public()
+  @Get('/market/config')
+  async getMarketConfig() {
+    return this.revenue.getMarketConfig();
+  }
+
+  @Get('/market/my-listings')
+  async listMyMarketListings(@CurrentUser() user: AuthenticatedUser) {
+    return this.revenue.listMarketListings({
+      mineWalletAddress: user.address,
+      includeInactive: true,
+    });
+  }
+
+  @Post('/market/listings')
+  async createMarketListing(@CurrentUser() user: AuthenticatedUser, @Body() body: unknown) {
+    const parsed = MarketListingBody.safeParse(body);
+    if (!parsed.success) {
+      throw new HttpException(
+        { message: '入力が不正です', errors: parsed.error.flatten().fieldErrors },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    const expiryAt = parsed.data.expiryAt ? new Date(parsed.data.expiryAt) : undefined;
+    if (expiryAt && Number.isNaN(expiryAt.getTime())) {
+      throw new HttpException(
+        { message: 'expiryAt は有効な ISO8601 日時である必要があります' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.revenue.createMarketListing({
+      walletAddress: user.address,
+      revenueRightId: parsed.data.revenueRightId,
+      priceJpyc: parsed.data.priceJpyc,
+      expiryAt,
+      onchainTxHash: parsed.data.onchainTxHash,
+    });
+  }
+
+  @Delete('/market/listings/:listingId')
+  async cancelMarketListing(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('listingId') listingId: string,
+    @Body() body: unknown,
+  ) {
+    const parsed = CancelMarketListingBody.safeParse(body ?? {});
+    if (!parsed.success) {
+      throw new HttpException(
+        { message: '入力が不正です', errors: parsed.error.flatten().fieldErrors },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.revenue.cancelMarketListing({
+      listingId,
+      walletAddress: user.address,
+    });
+  }
+
+  @Post('/market/listings/:listingId/buy')
+  async buyMarketListing(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('listingId') listingId: string,
+    @Body() body: unknown,
+  ) {
+    const parsed = BuyMarketListingBody.safeParse(body ?? {});
+    if (!parsed.success) {
+      throw new HttpException(
+        { message: '入力が不正です', errors: parsed.error.flatten().fieldErrors },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return this.revenue.buyMarketListing({
+      listingId,
+      walletAddress: user.address,
+      onchainPaymentTxHash: parsed.data.onchainPaymentTxHash,
+    });
+  }
+
+  @Post('/market/listings/:listingId/settle')
+  async settleMarketListing(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('listingId') listingId: string,
+  ) {
+    return this.revenue.settlePendingMarketListing({
+      listingId,
+      walletAddress: user.address,
+    });
   }
 
   @Post('/claim')

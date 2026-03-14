@@ -38,6 +38,41 @@ export interface UsePassesPageReturn {
   handleConfirmCancelListing: () => Promise<void>;
   cancelListingPending: boolean;
   cancelListingError: string | null;
+  latestTxHash: string | null;
+  latestTxType: 'list' | 'cancel' | null;
+  clearLatestTx: () => void;
+}
+
+function parseUsageListingError(error: unknown, action: 'list' | 'cancel'): string {
+  const fallback = action === 'list'
+    ? '出品トランザクションの送信に失敗しました。'
+    : '出品取消トランザクションの送信に失敗しました。';
+  const raw = error instanceof Error ? error.message : String(error ?? '');
+  if (!raw) return fallback;
+  if (/user rejected|rejected the request/i.test(raw)) return '署名がキャンセルされました。';
+  if (/connector not connected/i.test(raw)) return 'ウォレット接続が切断されています。再ログインしてください。';
+  if (raw.includes('0x59dc379f') || raw.includes('NotTokenOwner')) {
+    return 'この利用権の所有者ではないため出品できません。';
+  }
+  if (raw.includes('0xa22b745e') || raw.includes('CooldownNotElapsed')) {
+    return '購入直後の利用権は24時間経過するまで再出品できません。';
+  }
+  if (raw.includes('0x0f603df8') || raw.includes('TransferCutoffPassed')) {
+    return '譲渡期限を過ぎているため出品できません。';
+  }
+  if (raw.includes('0xdf978235') || raw.includes('MaxTransferCountReached')) {
+    return '譲渡回数の上限に達しているため出品できません。';
+  }
+  if (raw.includes('0x66cb03e9') || raw.includes('ListingNotActive')) {
+    return 'この出品はすでに無効です。画面を更新してください。';
+  }
+  if (raw.includes('0x5ec82351') || raw.includes('NotSeller')) {
+    return '出品者本人のみ取消できます。';
+  }
+  if (/UserOperation reverted during simulation/i.test(raw)) {
+    return 'AA シミュレーションで拒否されました。所有者と譲渡条件を確認してください。';
+  }
+  return fallback;
 }
 
 export function usePassesPage(): UsePassesPageReturn {
@@ -58,6 +93,8 @@ export function usePassesPage(): UsePassesPageReturn {
   const [cancelListingRight, setCancelListingRight] = useState<UsageRight | null>(null);
   const [cancelListingPending, setCancelListingPending] = useState(false);
   const [cancelListingError, setCancelListingError] = useState<string | null>(null);
+  const [latestTxHash, setLatestTxHash] = useState<string | null>(null);
+  const [latestTxType, setLatestTxType] = useState<'list' | 'cancel' | null>(null);
 
   useEffect(() => {
     if (!listingRight) setListingLocalError(null);
@@ -94,10 +131,7 @@ export function usePassesPage(): UsePassesPageReturn {
 
     const txHash = await listUsageRight(listingRight.onchainTokenId, price);
     if (!txHash) {
-      const detail = chainWriteError?.trim();
-      setListingLocalError(detail && !detail.includes('User rejected')
-        ? detail
-        : '出品トランザクションの送信に失敗しました');
+      setListingLocalError(parseUsageListingError(chainWriteError, 'list'));
       return;
     }
 
@@ -111,6 +145,8 @@ export function usePassesPage(): UsePassesPageReturn {
       });
       setListingRight(null);
       setListPriceMinor('');
+      setLatestTxHash(txHash);
+      setLatestTxType('list');
       await loadUsageRights();
     } catch (e) {
       setListingLocalError(
@@ -135,12 +171,7 @@ export function usePassesPage(): UsePassesPageReturn {
     try {
       const txHash = await chainCancelListing(cancelListingRight.onchainListingId);
       if (!txHash) {
-        const detail = chainWriteError?.trim();
-        setCancelListingError(
-          detail && !detail.includes('User rejected')
-            ? detail
-            : '出品取消トランザクションの送信に失敗しました',
-        );
+        setCancelListingError(parseUsageListingError(chainWriteError, 'cancel'));
         return;
       }
       await MarketplaceService.cancelListing(
@@ -149,9 +180,11 @@ export function usePassesPage(): UsePassesPageReturn {
         txHash,
       );
       setCancelListingRight(null);
+      setLatestTxHash(txHash);
+      setLatestTxType('cancel');
       await loadUsageRights();
     } catch (e) {
-      setCancelListingError(e instanceof Error ? e.message : 'キャンセルに失敗しました');
+      setCancelListingError(parseUsageListingError(e, 'cancel'));
     } finally {
       setCancelListingPending(false);
     }
@@ -196,5 +229,11 @@ export function usePassesPage(): UsePassesPageReturn {
     handleConfirmCancelListing,
     cancelListingPending,
     cancelListingError,
+    latestTxHash,
+    latestTxType,
+    clearLatestTx: () => {
+      setLatestTxHash(null);
+      setLatestTxType(null);
+    },
   };
 }

@@ -105,10 +105,14 @@ function NodeCard({
   node,
   onToggle,
   onEdit,
+  onRemove,
+  removing,
 }: {
   node: ManagedNode;
   onToggle: (nodeId: string) => void;
   onEdit: (node: ManagedNode) => void;
+  onRemove: (nodeId: string) => void;
+  removing: boolean;
 }) {
   const statusCfg = NODE_STATUS_CONFIG[node.status];
 
@@ -233,6 +237,13 @@ function NodeCard({
           </svg>
           設定を編集
         </button>
+        <button
+          onClick={() => onRemove(node.nodeId)}
+          disabled={removing}
+          className="w-full py-2 text-sm font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 rounded-xl border border-red-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {removing ? '削除中...' : 'このノードを削除'}
+        </button>
       </div>
     </div>
   );
@@ -272,6 +283,7 @@ function NodeEditModal({
   const [endTime, setEndTime] = useState(() => {
     return node?.availableWindows[0]?.endTime ?? '17:00';
   });
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // タスク種別の切り替え
   const toggleTask = (t: TaskType) => {
@@ -282,6 +294,15 @@ function NodeEditModal({
 
   // 保存処理
   const handleSave = () => {
+    if (selectedTasks.length === 0) {
+      setValidationError('対応タスクを1つ以上選択してください。');
+      return;
+    }
+    if (startTime >= endTime) {
+      setValidationError('終了時刻は開始時刻より後に設定してください。');
+      return;
+    }
+
     const windows: AvailableWindow[] = (Object.entries(activeDays) as [string, boolean][])
       .filter(([, active]) => active)
       .map(([day]) => ({
@@ -289,6 +310,13 @@ function NodeEditModal({
         startTime,
         endTime,
       }));
+
+    if (windows.length === 0) {
+      setValidationError('稼働曜日を1つ以上選択してください。');
+      return;
+    }
+
+    setValidationError(null);
 
     onSave({
       pricePerHourMinor: pricePerHour * 100,
@@ -494,6 +522,11 @@ function NodeEditModal({
           </p>
         </div>
 
+        {validationError && (
+          <p className="mx-6 mb-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            {validationError}
+          </p>
+        )}
         {/* モーダルフッター */}
         <div className="flex gap-3 px-6 py-4 border-t border-slate-100">
           <button onClick={onClose} className="btn-secondary flex-1" disabled={saving}>
@@ -583,9 +616,12 @@ export default function MerchantComputePage() {
     saving,
     saveSuccess,
     saveError,
+    removeError,
+    removingNodeId,
     loading,
     handleToggle,
     handleSave,
+    handleRemove,
   } = useMerchantCompute();
   const openEditor = () => {
     const target = nodes.find((node) => !node.configured) ?? nodes[0];
@@ -659,6 +695,11 @@ export default function MerchantComputePage() {
             <p className="text-sm font-semibold text-red-700">{saveError}</p>
           </div>
         )}
+        {removeError && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+            <p className="text-sm font-semibold text-red-700">{removeError}</p>
+          </div>
+        )}
 
         {/* 収益サマリー */}
         <TopSummary nodes={nodes} />
@@ -698,6 +739,11 @@ export default function MerchantComputePage() {
                   node={node}
                   onToggle={handleToggle}
                   onEdit={setEditingNode}
+                  onRemove={(nodeId) => {
+                    if (!window.confirm('このノードを削除します。よろしいですか？')) return;
+                    void handleRemove(nodeId);
+                  }}
+                  removing={removingNodeId === node.nodeId}
                 />
               ))}
             </div>

@@ -62,6 +62,28 @@ export const GetJobResponseSchema = z.object({
 });
 export type GetJobResponse = z.infer<typeof GetJobResponseSchema>;
 
+/** GET /v1/compute/jobs response item */
+export const ComputeJobListItemSchema = z.object({
+  jobId: z.string().min(1),
+  status: ComputeJobStatusSchema,
+  taskType: z.string().min(1),
+  estimatedHours: z.number().int().min(1),
+  priceMinor: z.number().int().nonnegative(),
+  nodeId: z.string().nullable(),
+  venueName: z.string().nullable(),
+  paymentTxHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/).nullable(),
+  onchainTxHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/).nullable(),
+  resultUri: z.string().nullable(),
+  createdAt: z.string().min(1),
+  startedAt: z.string().nullable(),
+  endedAt: z.string().nullable(),
+});
+export type ComputeJobListItem = z.infer<typeof ComputeJobListItemSchema>;
+
+/** GET /v1/compute/jobs response */
+export const ComputeJobsListResponseSchema = z.array(ComputeJobListItemSchema);
+export type ComputeJobsListResponse = z.infer<typeof ComputeJobsListResponseSchema>;
+
 /** POST /v1/compute/jobs/:jobId/cancel response */
 export const CancelJobResponseSchema = z.object({
   jobId: z.string().min(1),

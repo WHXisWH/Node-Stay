@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useComputePage } from '../../hooks';
 import { useJPYCTransfer } from '../../hooks/useJPYC';
-import { CONTRACT_ADDRESSES } from '../../services/config';
+import { CHAIN_CONFIG, CONTRACT_ADDRESSES } from '../../services/config';
 import type { ComputeNode, ComputeJob, TaskType } from '../../models/compute.model';
 import type { NodeStatus, JobStatus } from '../../models/compute.model';
 
@@ -42,6 +42,14 @@ function formatJPYC(minor: number): string {
   return (minor / 100).toLocaleString('ja-JP');
 }
 
+function shortTxHash(hash: string): string {
+  return `${hash.slice(0, 10)}...${hash.slice(-8)}`;
+}
+
+function explorerTxUrl(hash: string): string {
+  return `${CHAIN_CONFIG.blockExplorerUrl.replace(/\/+$/, '')}/tx/${hash}`;
+}
+
 function parseJobSubmitError(error: unknown): string {
   const fallback = 'ジョブ送信に失敗しました。時間をおいて再試行してください。';
   if (!(error instanceof Error)) return fallback;
@@ -61,6 +69,9 @@ function parseJobSubmitError(error: unknown): string {
   if (raw.includes('NEXT_PUBLIC_COMPUTE_RIGHT_ADDRESS')) return 'コンピュート決済先アドレスが未設定です。環境変数を確認してください。';
   if (raw.includes('501')) return 'コンピュート購入は現在停止中です（サーバー側 501）。';
   if (raw.includes('403')) return '権限不足のためジョブ送信できません。ウォレット・ログイン状態を確認してください。';
+  if (raw.includes('ノードがオンチェーン未登録です')) return 'このノードはオンチェーン未登録のためジョブ送信できません。';
+  if (raw.includes('JPYC支払い額が不足しています')) return 'JPYC 支払い額が不足しています。送金額と小数桁を確認してください。';
+  if (raw.includes('JPYC支払いトランザクションを確認できません')) return 'JPYC 送金トランザクションを検証できませんでした。数秒後に再試行してください。';
   return raw || fallback;
 }
 
@@ -206,6 +217,31 @@ function JobRow({ job }: { job: ComputeJob }) {
       {job.resultHash && (
         <div className="flex-shrink-0">
           <span className="badge-green text-xs">結果検証済み ✓</span>
+        </div>
+      )}
+
+      {(job.paymentTxHash || job.onchainTxHash) && (
+        <div className="flex-shrink-0 text-right">
+          {job.paymentTxHash && (
+            <a
+              href={explorerTxUrl(job.paymentTxHash)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block text-[11px] text-brand-600 hover:text-brand-800 font-semibold"
+            >
+              支払い tx: {shortTxHash(job.paymentTxHash)}
+            </a>
+          )}
+          {job.onchainTxHash && (
+            <a
+              href={explorerTxUrl(job.onchainTxHash)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block text-[11px] text-brand-600 hover:text-brand-800 font-semibold"
+            >
+              発行 tx: {shortTxHash(job.onchainTxHash)}
+            </a>
+          )}
         </div>
       )}
     </div>
@@ -457,9 +493,12 @@ export default function ComputePage() {
   } = useComputePage();
   const { transferJpyc, isTransferring, isConfirming } = useJPYCTransfer();
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [lastSubmitTx, setLastSubmitTx] = useState<{ paymentTxHash: string | null; onchainTxHash: string | null } | null>(null);
 
   useEffect(() => {
-    if (!bookingNode) setSubmitError(null);
+    if (!bookingNode) {
+      setSubmitError(null);
+    }
   }, [bookingNode]);
 
   const handleCloseBooking = () => {
@@ -480,11 +519,15 @@ export default function ComputePage() {
       const totalJpyc = (totalMinor / 100).toFixed(2);
       const paymentTxHash = await transferJpyc(computeRight, totalJpyc);
 
-      await submitJob({
+      const result = await submitJob({
         nodeId: bookingNode.nodeId,
         estimatedHours: hours,
         taskType,
         paymentTxHash,
+      });
+      setLastSubmitTx({
+        paymentTxHash,
+        onchainTxHash: result.onchainTxHash,
       });
     } catch (e) {
       // transfer/submit どちらの失敗でもモーダル内で原因を可視化する。
@@ -556,6 +599,26 @@ export default function ComputePage() {
             <div>
               <p className="font-semibold text-emerald-800">ジョブを送信しました！</p>
               <p className="text-sm text-emerald-600">マイジョブタブでステータスを確認できます。</p>
+              {lastSubmitTx?.onchainTxHash && (
+                <a
+                  href={explorerTxUrl(lastSubmitTx.onchainTxHash)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-emerald-700 underline font-semibold"
+                >
+                  取引詳細を確認する（発行 tx）
+                </a>
+              )}
+              {!lastSubmitTx?.onchainTxHash && lastSubmitTx?.paymentTxHash && (
+                <a
+                  href={explorerTxUrl(lastSubmitTx.paymentTxHash)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-emerald-700 underline font-semibold"
+                >
+                  取引詳細を確認する（支払い tx）
+                </a>
+              )}
             </div>
             <button
               onClick={() => setActiveTab('my-jobs')}

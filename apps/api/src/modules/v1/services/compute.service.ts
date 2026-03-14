@@ -219,6 +219,49 @@ export class ComputeService {
     return ethers.id(machineId) as `0x${string}`;
   }
 
+  private parseSchedulerPayload(
+    schedulerRef: string | null | undefined,
+  ): {
+    nodeId: string | null;
+    estimatedHours: number | null;
+    paymentTxHash: string | null;
+    taskType: string | null;
+  } {
+    if (!schedulerRef) {
+      return {
+        nodeId: null,
+        estimatedHours: null,
+        paymentTxHash: null,
+        taskType: null,
+      };
+    }
+
+    try {
+      const parsed = JSON.parse(schedulerRef) as {
+        nodeId?: unknown;
+        estimatedHours?: unknown;
+        paymentTxHash?: unknown;
+        task?: {
+          envVars?: Record<string, unknown>;
+        };
+      };
+      const taskTypeFromEnv = parsed.task?.envVars?.TASK_TYPE;
+      return {
+        nodeId: typeof parsed.nodeId === 'string' ? parsed.nodeId : null,
+        estimatedHours: Number.isInteger(parsed.estimatedHours) ? Number(parsed.estimatedHours) : null,
+        paymentTxHash: typeof parsed.paymentTxHash === 'string' ? parsed.paymentTxHash : null,
+        taskType: typeof taskTypeFromEnv === 'string' ? taskTypeFromEnv : null,
+      };
+    } catch {
+      return {
+        nodeId: null,
+        estimatedHours: null,
+        paymentTxHash: null,
+        taskType: null,
+      };
+    }
+  }
+
   private parsePositiveMajorPrice(raw: string): bigint {
     let major: bigint;
     try {
@@ -553,6 +596,64 @@ export class ComputeService {
     return this.prisma.computeJob.findUnique({ where: { id: jobId } });
   }
 
+  async listJobsForActor(input: { actorWalletAddress: string }) {
+    const actorWallet = this.requireWalletAddress(input.actorWalletAddress, 'ユーザー');
+    const actorUserId = await this.userService.findOrCreateByWallet(actorWallet);
+
+    const rows = await this.prisma.computeJob.findMany({
+      where: { buyerUserId: actorUserId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        computeRight: {
+          select: {
+            machineId: true,
+            onchainTxHash: true,
+            computeProduct: {
+              select: {
+                priceJpyc: true,
+                machine: {
+                  select: {
+                    venue: {
+                      select: {
+                        name: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return rows.map((row) => {
+      const schedulerPayload = this.parseSchedulerPayload(row.schedulerRef);
+      const estimatedHours =
+        schedulerPayload.estimatedHours && schedulerPayload.estimatedHours > 0
+          ? schedulerPayload.estimatedHours
+          : 1;
+      const unitPriceMinor = Number(row.computeRight?.computeProduct?.priceJpyc ?? '0') * 100;
+      const priceMinor = Math.max(0, Math.round(unitPriceMinor * estimatedHours));
+
+      return {
+        jobId: row.id,
+        status: row.status,
+        taskType: row.jobType ?? schedulerPayload.taskType ?? 'GENERAL',
+        estimatedHours,
+        priceMinor,
+        nodeId: schedulerPayload.nodeId ?? row.computeRight?.machineId ?? null,
+        venueName: row.computeRight?.computeProduct?.machine?.venue?.name ?? null,
+        paymentTxHash: schedulerPayload.paymentTxHash ?? null,
+        onchainTxHash: row.onchainTxHash ?? row.computeRight?.onchainTxHash ?? null,
+        resultUri: row.resultHash ?? null,
+        createdAt: row.createdAt.toISOString(),
+        startedAt: row.startedAt ? row.startedAt.toISOString() : null,
+        endedAt: row.endedAt ? row.endedAt.toISOString() : null,
+      };
+    });
+  }
+
   async cancelJob(jobId: string) {
     const job = await this.prisma.computeJob.findUnique({
       where: { id: jobId },
@@ -834,6 +935,55 @@ export class ComputeService {
       throw new HttpException({ message: 'マシンが見つかりません' }, HttpStatus.NOT_FOUND);
     }
     return this.mapMachineRowToMerchantNode(updatedMachine);
+  }
+
+  async removeMerchantNode(input: { actorWalletAddress: string; machineId: string }) {
+    const actorWallet = this.requireWalletAddress(input.actorWalletAddress, 'ユーザー');
+    const actorUserId = await this.userService.findOrCreateByWallet(actorWallet);
+
+    const machine = await this.prisma.machine.findUnique({
+      where: { id: input.machineId },
+      include: {
+        venue: {
+          select: {
+            merchant: {
+              select: {
+                ownerUserId: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!machine) {
+      throw new HttpException({ message: 'マシンが見つかりません' }, HttpStatus.NOT_FOUND);
+    }
+
+    const ownerUserId = machine.venue?.merchant?.ownerUserId;
+    if (ownerUserId && ownerUserId !== actorUserId) {
+      throw new HttpException(
+        { message: 'このマシンを削除する権限がありません' },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.computeProduct.updateMany({
+        where: {
+          machineId: machine.id,
+          status: { in: ['ACTIVE', 'PAUSED'] },
+        },
+        data: { status: 'PAUSED' },
+      });
+
+      await tx.machine.update({
+        where: { id: machine.id },
+        data: { status: 'DECOMMISSIONED' },
+      });
+    });
+
+    this.logger.log(`[compute.remove-node] done machineId=${machine.id} by=${actorWallet}`);
+    return { nodeId: machine.id, removed: true as const };
   }
 
   // -----------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpException, HttpStatus, Param, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpException, HttpStatus, Param, Post, Put, Query } from '@nestjs/common';
 import { z } from 'zod';
 import { ethers } from 'ethers';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -315,6 +315,17 @@ export class MerchantController {
       maxBookingHours: parsed.data.maxBookingHours,
       supportedTasks: parsed.data.supportedTasks,
       availableWindows: parsed.data.availableWindows,
+    });
+  }
+
+  @Delete('/compute/nodes/:machineId')
+  async removeMerchantComputeNode(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('machineId') machineId: string,
+  ) {
+    return this.computeService.removeMerchantNode({
+      actorWalletAddress: user.address,
+      machineId,
     });
   }
 

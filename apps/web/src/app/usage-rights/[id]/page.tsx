@@ -9,6 +9,7 @@ import { useUsageRightDetail } from '../../../hooks';
 import type { UsageRightDetail } from '../../../hooks/useUsageRightDetail';
 import type { UsageRightStatus } from '../../../hooks/usePassesPage';
 import { CheckinQrCode } from '../../../components/CheckinQrCode';
+import { CHAIN_CONFIG } from '../../../services/config';
 
 // ===== ステータス設定 =====
 const STATUS_CONFIG: Record<UsageRightStatus, { label: string; dotColor: string; badgeClass: string }> = {
@@ -48,6 +49,10 @@ function formatRemainingTime(minutes: number) {
 
 function shortTxHash(hash: string) {
   return `${hash.slice(0, 10)}...${hash.slice(-8)}`;
+}
+
+function explorerTxUrl(hash: string) {
+  return `${CHAIN_CONFIG.blockExplorerUrl.replace(/\/+$/, '')}/tx/${hash}`;
 }
 
 // ===== QR コードモーダル =====
@@ -212,7 +217,7 @@ export default function UsageRightDetailPage() {
     showQr, setShowQr,
     showTransfer, setShowTransfer,
     transferInput, setTransferInput,
-    transferring, transferError, transferSuccess,
+    transferring, transferError, transferSuccess, transferTxHash,
     handleTransfer,
     cancelling, cancelError, cancelSuccess,
     handleCancel,
@@ -343,7 +348,19 @@ export default function UsageRightDetailPage() {
                 <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                   <polyline points="4 12 8 16 20 8" />
                 </svg>
-                譲渡が完了しました
+                <div className="flex flex-col gap-1">
+                  <span>譲渡が完了しました</span>
+                  {transferTxHash && (
+                    <a
+                      href={explorerTxUrl(transferTxHash)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-emerald-700 underline font-semibold"
+                    >
+                      取引詳細を確認する
+                    </a>
+                  )}
+                </div>
               </div>
             )}
 
@@ -529,12 +546,12 @@ export default function UsageRightDetailPage() {
               {right.txHash && (
                 <div className="mt-3">
                   <a
-                    href={`https://amoy.polygonscan.com/tx/${right.txHash}`}
+                    href={explorerTxUrl(right.txHash)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-xs text-brand-600 hover:text-brand-800 font-semibold flex items-center gap-1 transition-colors"
                   >
-                    Polygon PoS で確認する
+                    取引詳細を確認する
                     <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                       <polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />

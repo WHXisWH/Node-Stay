@@ -30,7 +30,7 @@ export interface UseComputePageReturn {
   closeBooking: () => void;
   setTaskFilter: (f: TaskFilter) => void;
   setAvailableOnly: (v: boolean) => void;
-  submitJob: (params: { nodeId: string; estimatedHours: number; taskType: TaskType; taskSpec?: unknown; paymentTxHash?: string }) => Promise<void>;
+  submitJob: (params: { nodeId: string; estimatedHours: number; taskType: TaskType; taskSpec?: unknown; paymentTxHash?: string }) => Promise<{ jobId: string; paymentTxHash: string | null; onchainTxHash: string | null }>;
   cancelJob: (jobId: string) => Promise<void>;
 }
 
@@ -75,7 +75,7 @@ export function useComputePage(): UseComputePageReturn {
               TASK_TYPE: params.taskType,
             },
           };
-    await ComputeService.submitJob({
+    return await ComputeService.submitJob({
       nodeId: params.nodeId,
       estimatedHours: params.estimatedHours,
       taskType: params.taskType,

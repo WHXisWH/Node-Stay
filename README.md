@@ -182,7 +182,6 @@ npm run prisma:studio
 ## 参考ドキュメント
 
 - `docs/ARCHITECTURE.md`
-- `docs/DEPLOY_RENDER_VERCEL.md`
 
 ## ライセンス
 

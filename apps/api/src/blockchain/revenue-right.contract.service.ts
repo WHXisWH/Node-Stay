@@ -8,6 +8,11 @@ export class RevenueRightContractService {
 
   constructor(private readonly blockchain: BlockchainService) {}
 
+  get operatorAddress(): string | null {
+    if (!this.blockchain.isEnabled) return null;
+    return this.blockchain.signer.address;
+  }
+
   private get contract() {
     const address = process.env.REVENUE_RIGHT_ADDRESS;
     if (!address || !this.blockchain.isEnabled) return null;
@@ -90,6 +95,38 @@ export class RevenueRightContractService {
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       this.logger.error(`recordAllocation 失敗: ${msg}`);
+      return null;
+    }
+  }
+
+  async transferFromEscrow(input: {
+    to: string;
+    programId: bigint;
+    amount: bigint;
+  }): Promise<{ txHash: string } | null> {
+    const c = this.contract;
+    if (!c || !this.blockchain.isEnabled) {
+      this.logger.debug('RevenueRight: コントラクト未設定。transferFromEscrow をスキップ。');
+      return null;
+    }
+
+    try {
+      const from = this.blockchain.signer.address as `0x${string}`;
+      const tx = await c.safeTransferFrom(
+        from,
+        input.to as `0x${string}`,
+        input.programId,
+        input.amount,
+        '0x',
+      );
+      const receipt = await tx.wait();
+      if (!receipt?.hash) {
+        throw new Error('safeTransferFrom の receipt hash が取得できません');
+      }
+      return { txHash: receipt.hash };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.error(`transferFromEscrow 失敗: ${msg}`);
       return null;
     }
   }

@@ -59,6 +59,7 @@ export interface UseUsageRightDetailReturn {
   transferring: boolean;
   transferError: string | null;
   transferSuccess: boolean;
+  transferTxHash: string | null;
   handleTransfer: () => Promise<void>;
   // キャンセル
   cancelling: boolean;
@@ -159,6 +160,21 @@ function parseTransferErrorMessage(error: unknown): string {
   if (/insufficient approval|ERC721InsufficientApproval/i.test(raw)) {
     return 'NFT の譲渡権限が不足しています。所有者アカウントで再実行してください。';
   }
+  if (raw.includes('0x0f603df8') || raw.includes('TransferCutoffPassed')) {
+    return '譲渡期限を過ぎているため、この利用権は譲渡できません。';
+  }
+  if (raw.includes('0xdf978235') || raw.includes('MaxTransferCountReached')) {
+    return '譲渡回数の上限に達しているため、この利用権は譲渡できません。';
+  }
+  if (raw.includes('0xdc8d8db7') || raw.includes('NotTransferable')) {
+    return 'この利用権は譲渡不可です。';
+  }
+  if (raw.includes('0x7e273289') || raw.includes('TokenNotFound')) {
+    return '対象の利用権がオンチェーンで見つかりません。';
+  }
+  if (/UserOperation reverted during simulation/i.test(raw)) {
+    return 'AA シミュレーションで拒否されました。所有者ウォレットと譲渡条件を確認してください。';
+  }
   return parseApiErrorMessage(error);
 }
 
@@ -189,6 +205,7 @@ export function useUsageRightDetail(id: string | undefined): UseUsageRightDetail
   const [transferring, setTransferring] = useState(false);
   const [transferError, setTransferError] = useState<string | null>(null);
   const [transferSuccess, setTransferSuccess] = useState(false);
+  const [transferTxHash, setTransferTxHash] = useState<string | null>(null);
 
   // キャンセル
   const [cancelling, setCancelling] = useState(false);
@@ -312,6 +329,7 @@ export function useUsageRightDetail(id: string | undefined): UseUsageRightDetail
 
     setTransferring(true);
     setTransferError(null);
+    setTransferTxHash(null);
     try {
       const tokenId = BigInt(right.onchainTokenId);
       const sendViaAa = async (): Promise<`0x${string}`> => {
@@ -358,6 +376,7 @@ export function useUsageRightDetail(id: string | undefined): UseUsageRightDetail
       const client = createNodeStayClient();
       await client.transferUsageRight(id, addr, onchainTxHash, crypto.randomUUID(), fromWallet);
       setTransferSuccess(true);
+      setTransferTxHash(onchainTxHash);
       setShowTransfer(false);
       // 譲渡成功後に詳細を再取得して状態を同期する
       await loadDetail();
@@ -399,6 +418,7 @@ export function useUsageRightDetail(id: string | undefined): UseUsageRightDetail
     transferring,
     transferError,
     transferSuccess,
+    transferTxHash,
     handleTransfer,
     cancelling,
     cancelError,

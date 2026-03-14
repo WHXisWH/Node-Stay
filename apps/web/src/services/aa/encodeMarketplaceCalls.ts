@@ -44,6 +44,22 @@ const ERC721_APPROVE_ABI = [
   },
 ] as const;
 
+const ERC1155_SAFE_TRANSFER_FROM_ABI = [
+  {
+    name: 'safeTransferFrom',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'from', type: 'address' },
+      { name: 'to', type: 'address' },
+      { name: 'id', type: 'uint256' },
+      { name: 'value', type: 'uint256' },
+      { name: 'data', type: 'bytes' },
+    ],
+    outputs: [],
+  },
+] as const;
+
 const MARKETPLACE_ABI = [
   {
     name: 'createListing',
@@ -137,5 +153,18 @@ export function encodeRevenueClaim(programId: bigint, allocationId: bigint): Hex
     abi: REVENUE_RIGHT_ABI,
     functionName: 'claim',
     args: [programId, allocationId],
+  });
+}
+
+export function encodeRevenueSafeTransferFrom(
+  from: Address,
+  to: Address,
+  programId: bigint,
+  amount: bigint,
+): Hex {
+  return encodeFunctionData({
+    abi: ERC1155_SAFE_TRANSFER_FROM_ABI,
+    functionName: 'safeTransferFrom',
+    args: [from, to, programId, amount, '0x'],
   });
 }

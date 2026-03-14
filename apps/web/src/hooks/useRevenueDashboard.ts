@@ -57,6 +57,7 @@ export interface RevenueProgram {
 export interface RevenueRight {
   id: string;
   programId: string;
+  onchainProgramId: string | null;
   program: RevenueProgram;
   /** 保有量（ERC-1155 の amount） */
   holdAmount: number;
@@ -89,6 +90,7 @@ export interface UseRevenueDashboardReturn {
   claimingId: string | null;
   claimSuccess: string | null;
   handleClaim: (allocationId: string) => Promise<void>;
+  refresh: () => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -237,6 +239,7 @@ export function useRevenueDashboard(): UseRevenueDashboardReturn {
         return {
           id: right.id,
           programId: right.revenueProgramId,
+          onchainProgramId: right.onchainProgramId ?? right.onchainTokenId ?? null,
             program: {
               programId: right.revenueProgramId,
               nodeId: machine.machineId,
@@ -416,5 +419,6 @@ export function useRevenueDashboard(): UseRevenueDashboardReturn {
     claimingId,
     claimSuccess,
     handleClaim,
+    refresh: loadDashboard,
   };
 }

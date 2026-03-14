@@ -17,9 +17,12 @@ export interface UseMerchantComputeReturn {
   saving: boolean;
   saveSuccess: boolean;
   saveError: string | null;
+  removeError: string | null;
+  removingNodeId: string | null;
   loading: boolean;
   handleToggle: (nodeId: string) => void;
   handleSave: (data: Partial<ManagedNode>) => Promise<void>;
+  handleRemove: (nodeId: string) => Promise<void>;
 }
 
 function parseSaveError(error: unknown): string {
@@ -46,12 +49,15 @@ export function useMerchantCompute(): UseMerchantComputeReturn {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [removeError, setRemoveError] = useState<string | null>(null);
+  const [removingNodeId, setRemovingNodeId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [currentVenueId, setCurrentVenueId] = useState<string>('');
 
   const loadNodes = useCallback(async () => {
     setLoading(true);
     setSaveError(null);
+    setRemoveError(null);
     try {
       const client = createNodeStayClient();
       const merchantVenues = await client.listMyMerchantVenues().catch(() => []);
@@ -147,6 +153,25 @@ export function useMerchantCompute(): UseMerchantComputeReturn {
     }
   };
 
+  const handleRemove = async (nodeId: string) => {
+    setRemovingNodeId(nodeId);
+    setRemoveError(null);
+    try {
+      const client = createNodeStayClient();
+      await client.removeMerchantComputeNode(nodeId);
+      if (editingNode?.nodeId === nodeId) {
+        setEditingNode(undefined);
+      }
+      await loadNodes();
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 4000);
+    } catch (error) {
+      setRemoveError(parseSaveError(error));
+    } finally {
+      setRemovingNodeId(null);
+    }
+  };
+
   return {
     venueName,
     nodes,
@@ -155,8 +180,11 @@ export function useMerchantCompute(): UseMerchantComputeReturn {
     saving,
     saveSuccess,
     saveError,
+    removeError,
+    removingNodeId,
     loading,
     handleToggle,
     handleSave,
+    handleRemove,
   };
 }

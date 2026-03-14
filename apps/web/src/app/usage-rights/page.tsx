@@ -8,6 +8,7 @@ import type { UsageRight } from '../../hooks/usePassesPage';
 import { useUserState } from '../../hooks/useUserState';
 import { CheckinQrCode } from '../../components/CheckinQrCode';
 import { Modal } from '../../components/ui';
+import { CHAIN_CONFIG } from '../../services/config';
 
 // ===== ステータスラベル定義（View 表示用） =====
 const STATUS_CONFIG: Record<
@@ -71,6 +72,10 @@ function formatExpiry(isoString: string): string {
   if (diffDays === 0) return '本日期限';
   if (diffDays === 1) return '明日期限';
   return `${diffDays}日後に期限切れ`;
+}
+
+function explorerTxUrl(hash: string): string {
+  return `${CHAIN_CONFIG.blockExplorerUrl.replace(/\/+$/, '')}/tx/${hash}`;
 }
 
 // ===== QRコード表示モーダル =====
@@ -430,6 +435,9 @@ export default function UsageRightsPage() {
     handleConfirmCancelListing,
     cancelListingPending,
     cancelListingError,
+    latestTxHash,
+    latestTxType,
+    clearLatestTx,
   } = usePassesPage();
   const { balance, isAuthenticated } = useUserState();
 
@@ -464,6 +472,34 @@ export default function UsageRightsPage() {
 
       {/* メインコンテンツ */}
       <div className="container-main py-8">
+        {latestTxHash && latestTxType && (
+          <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3 animate-fade-in">
+            <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
+              <svg width="12" height="12" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+                <polyline points="2 6 5 10 11 3" />
+              </svg>
+            </div>
+            <div className="flex flex-col gap-1">
+              <p className="font-semibold text-emerald-800">
+                {latestTxType === 'list' ? '出品トランザクションを送信しました。' : '出品取消トランザクションを送信しました。'}
+              </p>
+              <a
+                href={explorerTxUrl(latestTxHash)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-emerald-700 underline font-semibold"
+              >
+                取引詳細を確認する
+              </a>
+            </div>
+            <button
+              onClick={clearLatestTx}
+              className="ml-auto text-emerald-700 text-sm font-semibold hover:text-emerald-900"
+            >
+              閉じる
+            </button>
+          </div>
+        )}
         {/* フィルタータブ */}
         <div className="flex gap-1 bg-slate-100 p-1 rounded-xl mb-8 w-fit">
           {FILTER_TABS.map((tab) => (

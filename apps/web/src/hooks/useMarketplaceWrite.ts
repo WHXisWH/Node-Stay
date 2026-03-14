@@ -63,6 +63,46 @@ function isConnectorNotConnectedError(error: unknown): boolean {
   return /connector not connected/i.test(message);
 }
 
+function parseMarketplaceWriteError(error: unknown, action: 'list' | 'buy' | 'cancel'): string {
+  const fallbackMap: Record<typeof action, string> = {
+    list: '出品トランザクションの送信に失敗しました。',
+    buy: '購入トランザクションの送信に失敗しました。',
+    cancel: '出品取消トランザクションの送信に失敗しました。',
+  };
+  const raw = error instanceof Error ? error.message : String(error ?? '');
+  if (!raw) return fallbackMap[action];
+  if (/user rejected|rejected the request/i.test(raw)) return '署名がキャンセルされました。';
+  if (/connector not connected/i.test(raw)) return 'ウォレット接続が切断されています。再ログインしてください。';
+  if (raw.includes('0x59dc379f') || raw.includes('NotTokenOwner')) {
+    return 'この利用権の所有者ではないため出品できません。';
+  }
+  if (raw.includes('0xa22b745e') || raw.includes('CooldownNotElapsed')) {
+    return 'この利用権は購入直後のため、24時間経過するまで再出品できません。';
+  }
+  if (raw.includes('0x66cb03e9') || raw.includes('ListingNotActive')) {
+    return 'この出品はすでに無効です。画面を更新してください。';
+  }
+  if (raw.includes('0x5ec82351') || raw.includes('NotSeller')) {
+    return '出品者本人のみ取消できます。';
+  }
+  if (raw.includes('0x2aa3c9e9') || raw.includes('SellerCannotBuy')) {
+    return '自分の出品は購入できません。';
+  }
+  if (raw.includes('0x0f603df8') || raw.includes('TransferCutoffPassed')) {
+    return '譲渡期限を過ぎているため出品できません。';
+  }
+  if (raw.includes('0xdf978235') || raw.includes('MaxTransferCountReached')) {
+    return '譲渡回数の上限に達しているため出品できません。';
+  }
+  if (raw.includes('0x177e802f') || /insufficient approval|ERC721InsufficientApproval/i.test(raw)) {
+    return 'NFT の承認に失敗しました。しばらく待ってから再試行してください。';
+  }
+  if (/UserOperation reverted during simulation/i.test(raw)) {
+    return 'AA シミュレーションでトランザクションが拒否されました。利用権の譲渡条件と所有者を確認してください。';
+  }
+  return fallbackMap[action];
+}
+
 export function useMarketplaceWrite() {
   const { writeContractAsync } = useWriteContract();
   const loginMethod = useUserStore((s) => s.loginMethod);
@@ -168,8 +208,7 @@ export function useMarketplaceWrite() {
         throw walletError;
       }
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (!msg.includes('User rejected')) setError(msg);
+      setError(parseMarketplaceWriteError(e, 'list'));
       return null;
     } finally {
       setPending(false);
@@ -228,8 +267,7 @@ export function useMarketplaceWrite() {
         throw walletError;
       }
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (!msg.includes('User rejected')) setError(msg);
+      setError(parseMarketplaceWriteError(e, 'buy'));
       return null;
     } finally {
       setPending(false);
@@ -274,8 +312,7 @@ export function useMarketplaceWrite() {
         throw walletError;
       }
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (!msg.includes('User rejected')) setError(msg);
+      setError(parseMarketplaceWriteError(e, 'cancel'));
       return null;
     } finally {
       setPending(false);

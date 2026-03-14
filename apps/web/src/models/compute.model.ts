@@ -61,6 +61,8 @@ export interface ComputeJob {
   startAt?: string;
   endAt?: string;
   resultHash?: string;
+  paymentTxHash?: string | null;
+  onchainTxHash?: string | null;
 }
 
 /** Input for submitting a job (POST /v1/compute/jobs or chain submit) */

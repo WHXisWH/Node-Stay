@@ -1,6 +1,7 @@
 import { normalizeIdempotencyKey } from '@nodestay/domain';
 import type {
   ComputeNodeItem,
+  ComputeJobListItem,
   SubmitJobBody,
   SubmitJobResponse,
   GetJobResponse,
@@ -378,6 +379,15 @@ export class NodeStayClient {
     });
   }
 
+  async removeMerchantComputeNode(
+    machineId: string,
+  ): Promise<{ nodeId: string; removed: true }> {
+    return await this.json(`/v1/merchant/compute/nodes/${encodeURIComponent(machineId)}`, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+
   async createDispute(body: { venueId: string; reason: string }): Promise<{ disputeId: string; venueId: string; reason: string; status: string; createdAtIso: string }> {
     return await this.json('/v1/merchant/disputes', {
       method: 'POST',
@@ -752,6 +762,11 @@ export class NodeStayClient {
     return await this.json<GetJobResponse>(`/v1/compute/jobs/${encodeURIComponent(jobId)}`);
   }
 
+  /** GET /v1/compute/jobs */
+  async listComputeJobs(): Promise<ComputeJobListItem[]> {
+    return await this.json<ComputeJobListItem[]>('/v1/compute/jobs');
+  }
+
   /** POST /v1/compute/jobs/:jobId/cancel */
   async cancelComputeJob(jobId: string): Promise<CancelJobResponse> {
     return await this.json<CancelJobResponse>(`/v1/compute/jobs/${encodeURIComponent(jobId)}/cancel`, {
@@ -779,6 +794,153 @@ export class NodeStayClient {
   }>> {
     const qs = machineId ? `?machineId=${encodeURIComponent(machineId)}` : '';
     return await this.json(`/v1/revenue/programs${qs}`);
+  }
+
+  async listRevenueMarketListings(params?: {
+    programId?: string;
+    includeInactive?: boolean;
+  }): Promise<Array<{
+    id: string;
+    listingType: string;
+    status: string;
+    active: boolean;
+    priceJpyc: string;
+    expiryAt: string | null;
+    soldAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+    sellerUserId: string | null;
+    sellerWalletAddress: string | null;
+    buyerUserId: string | null;
+    buyerWalletAddress: string | null;
+    revenueRight: {
+      id: string;
+      revenueProgramId: string;
+      onchainProgramId: string | null;
+      amount1155: string | null;
+      status: string;
+      machineId: string;
+      nodeId: string;
+      machineName: string;
+      venueName: string;
+      settlementCycle: string;
+      startAt: string;
+      endAt: string;
+    };
+  }>> {
+    const query = new URLSearchParams();
+    if (params?.programId) query.set('programId', params.programId);
+    if (typeof params?.includeInactive === 'boolean') {
+      query.set('includeInactive', params.includeInactive ? 'true' : 'false');
+    }
+    return await this.json(`/v1/revenue/market/listings?${query.toString()}`);
+  }
+
+  async getRevenueMarketConfig(): Promise<{
+    revenueRightAddress: string | null;
+    jpycTokenAddress: string | null;
+    escrowWallet: string | null;
+    chainEnabled: boolean;
+  }> {
+    return await this.json('/v1/revenue/market/config');
+  }
+
+  async listMyRevenueMarketListings(): Promise<Array<{
+    id: string;
+    listingType: string;
+    status: string;
+    active: boolean;
+    priceJpyc: string;
+    expiryAt: string | null;
+    soldAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+    sellerUserId: string | null;
+    sellerWalletAddress: string | null;
+    buyerUserId: string | null;
+    buyerWalletAddress: string | null;
+    revenueRight: {
+      id: string;
+      revenueProgramId: string;
+      onchainProgramId: string | null;
+      amount1155: string | null;
+      status: string;
+      machineId: string;
+      nodeId: string;
+      machineName: string;
+      venueName: string;
+      settlementCycle: string;
+      startAt: string;
+      endAt: string;
+    };
+  }>> {
+    return await this.json('/v1/revenue/market/my-listings');
+  }
+
+  async createRevenueMarketListing(input: {
+    revenueRightId: string;
+    priceJpyc: string;
+    expiryAt?: string;
+    onchainTxHash: string;
+  }): Promise<{
+    id: string;
+    status: string;
+    onchainTxHash: string;
+  }> {
+    return await this.json('/v1/revenue/market/listings', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+  }
+
+  async cancelRevenueMarketListing(
+    listingId: string,
+    input?: Record<string, never>,
+  ): Promise<{
+    id: string;
+    status: string;
+    transferTxHash: string;
+  }> {
+    return await this.json(`/v1/revenue/market/listings/${encodeURIComponent(listingId)}`, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input ?? {}),
+    });
+  }
+
+  async buyRevenueMarketListing(
+    listingId: string,
+    input: { onchainPaymentTxHash: string },
+  ): Promise<{
+    id: string;
+    status: string;
+    buyerUserId: string;
+    soldAt: string;
+    paymentTxHash: string;
+    transferTxHash: string;
+  }> {
+    return await this.json(`/v1/revenue/market/listings/${encodeURIComponent(listingId)}/buy`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    });
+  }
+
+  async settleRevenueMarketListing(
+    listingId: string,
+  ): Promise<{
+    id: string;
+    status: string;
+    buyerUserId: string;
+    soldAt: string;
+    transferTxHash: string | null;
+  }> {
+    return await this.json(`/v1/revenue/market/listings/${encodeURIComponent(listingId)}/settle`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
   }
 
   async createRevenueProgram(input: {

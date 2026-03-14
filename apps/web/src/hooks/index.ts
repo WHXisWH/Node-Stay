@@ -27,3 +27,4 @@ export type { UseJPYCBalanceReturn, UseJPYCApproveReturn } from './useJPYC';
 export * from './useMachineDetailPage';
 export type { MachineSpec, MachineStatus, SlotWindow, MachineDetail, UseMachineDetailPageReturn } from './useMachineDetailPage';
 export * from './useRevenueDashboard';
+export * from './useRevenueMarket';

@@ -88,6 +88,14 @@ export class ComputeController {
     return { jobId: job.id, status: job.status };
   }
 
+  @Get('/jobs')
+  async listMyJobs(@CurrentUser() user: AuthenticatedUser) {
+    if (!this.flags.computeMarketEnabled()) {
+      throw new HttpException({ message: 'コンピュート市場は無効です' }, HttpStatus.NOT_IMPLEMENTED);
+    }
+    return await this.compute.listJobsForActor({ actorWalletAddress: user.address });
+  }
+
   @Post('/jobs/:jobId/cancel')
   async cancel(@Param('jobId') jobId: string) {
     if (!this.flags.computeMarketEnabled()) {
