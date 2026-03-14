@@ -197,8 +197,13 @@ class UsageRightServiceClass {
     }
   }
 
-  async transfer(id: string, newOwnerUserId: string, idempotencyKey: string): Promise<void> {
-    await this.client.transferUsageRight(id, newOwnerUserId, idempotencyKey);
+  async transfer(
+    id: string,
+    newOwnerUserId: string,
+    onchainTxHash: string,
+    idempotencyKey: string,
+  ): Promise<void> {
+    await this.client.transferUsageRight(id, newOwnerUserId, onchainTxHash, idempotencyKey);
   }
 
   async cancel(id: string): Promise<void> {

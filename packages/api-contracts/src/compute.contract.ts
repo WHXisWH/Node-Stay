@@ -25,6 +25,7 @@ export const TaskSpecSchema = z.object({
 });
 export const SubmitJobBodySchema = z.object({
   requesterId: z.string().min(1).optional(),
+  payerWallet: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   nodeId: z.string().min(1),
   estimatedHours: z.number().int().min(1),
   taskType: z.string().min(1),

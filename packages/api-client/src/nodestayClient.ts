@@ -437,12 +437,17 @@ export class NodeStayClient {
   }
 
   /** POST /v1/usage-rights/:id/transfer — 利用権譲渡 */
-  async transferUsageRight(id: string, newOwnerUserId: string, idempotencyKey: string): Promise<{ id: string; status: string }> {
+  async transferUsageRight(
+    id: string,
+    newOwnerUserId: string,
+    onchainTxHash: string,
+    idempotencyKey: string,
+  ): Promise<{ usageRightId: string; status: string }> {
     const key = normalizeIdempotencyKey(idempotencyKey);
     return await this.json(`/v1/usage-rights/${encodeURIComponent(id)}/transfer`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'idempotency-key': key },
-      body: JSON.stringify({ newOwnerUserId }),
+      body: JSON.stringify({ newOwnerUserId, onchainTxHash }),
     });
   }
 

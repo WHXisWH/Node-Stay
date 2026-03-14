@@ -4,6 +4,7 @@
  */
 
 import type { NodeStayClient } from '@nodestay/api-client';
+import { isAddress } from 'viem';
 import type { ComputeNode, ComputeJob, SubmitJobInput } from '../models/compute.model';
 import { setComputeStore, getComputeStore } from '../stores/compute.store';
 import { useUserStore } from '../stores/user.store';
@@ -141,12 +142,17 @@ export const ComputeService = {
         taskType: params.taskType,
         taskSpec: params.taskSpec,
       });
-      const requesterWallet = useUserStore.getState().walletAddress;
-      if (!requesterWallet) {
+      const user = useUserStore.getState();
+      const requesterWallet =
+        user.loginMethod === 'social'
+          ? (user.aaWalletAddress ?? user.socialWalletAddress ?? user.walletAddress)
+          : user.walletAddress;
+      if (!requesterWallet || !isAddress(requesterWallet)) {
         throw new Error('ウォレット未接続のためジョブ送信できません');
       }
       const res = await c.submitComputeJob({
         requesterId: params.requesterId ?? requesterWallet,
+        payerWallet: params.payerWallet ?? requesterWallet,
         nodeId: params.nodeId,
         estimatedHours: params.estimatedHours,
         taskType: params.taskType,

@@ -2,15 +2,20 @@ import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ethers } from 'ethers';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { UsageRightContractService } from '../../../blockchain/usage-right.contract.service';
+import { BlockchainService } from '../../../blockchain/blockchain.service';
 import { UserService } from './user.service';
 
 @Injectable()
 export class UsageRightService {
   private readonly logger = new Logger(UsageRightService.name);
+  private readonly usageRightIface = new ethers.Interface([
+    'event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)',
+  ]);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly usageRightContract: UsageRightContractService,
+    private readonly blockchain: BlockchainService,
     private readonly userService: UserService,
   ) {}
 
@@ -23,6 +28,93 @@ export class UsageRightService {
       );
     }
     return normalized;
+  }
+
+  private normalizeTxHash(txHash: string): string {
+    const normalized = txHash.trim();
+    if (!/^0x[0-9a-fA-F]{64}$/.test(normalized)) {
+      throw new HttpException(
+        { message: 'onchainTxHash の形式が不正です' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    return normalized;
+  }
+
+  private async getReceiptWithRetry(
+    txHash: string,
+    opts?: { attempts?: number; intervalMs?: number },
+  ): Promise<ethers.TransactionReceipt | null> {
+    if (!this.blockchain.isEnabled) return null;
+    const attempts = opts?.attempts ?? 12;
+    const intervalMs = opts?.intervalMs ?? 1000;
+    for (let i = 0; i < attempts; i += 1) {
+      const receipt = await this.blockchain.provider.getTransactionReceipt(txHash);
+      if (receipt) return receipt;
+      if (i < attempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      }
+    }
+    return null;
+  }
+
+  private async verifyTransferEventOrThrow(input: {
+    txHash: string;
+    tokenId: string;
+    fromWallet: string;
+    toWallet: string;
+  }): Promise<string> {
+    const normalizedTxHash = this.normalizeTxHash(input.txHash);
+    const contractAddress = process.env.USAGE_RIGHT_ADDRESS ?? process.env.ACCESS_PASS_NFT_ADDRESS;
+    if (!contractAddress || !ethers.isAddress(contractAddress)) {
+      throw new HttpException(
+        { message: 'USAGE_RIGHT_ADDRESS が未設定です' },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+    if (!this.blockchain.isEnabled) {
+      throw new HttpException(
+        { message: 'ブロックチェーン接続が無効です' },
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
+
+    const receipt = await this.getReceiptWithRetry(normalizedTxHash);
+    if (!receipt || receipt.status !== 1) {
+      throw new HttpException(
+        { message: 'オンチェーン取引の確認に失敗しました' },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+
+    const expectedTokenId = input.tokenId;
+    const expectedFrom = input.fromWallet.toLowerCase();
+    const expectedTo = input.toWallet.toLowerCase();
+    const expectedContract = contractAddress.toLowerCase();
+
+    for (const log of receipt.logs) {
+      if (log.address.toLowerCase() !== expectedContract) continue;
+
+      let parsed: ethers.LogDescription | null = null;
+      try {
+        parsed = this.usageRightIface.parseLog(log);
+      } catch {
+        parsed = null;
+      }
+      if (!parsed || parsed.name !== 'Transfer') continue;
+
+      const from = String(parsed.args.from).toLowerCase();
+      const to = String(parsed.args.to).toLowerCase();
+      const tokenId = (parsed.args.tokenId as bigint).toString();
+      if (from === expectedFrom && to === expectedTo && tokenId === expectedTokenId) {
+        return normalizedTxHash;
+      }
+    }
+
+    throw new HttpException(
+      { message: 'Transferイベントが見つかりません' },
+      HttpStatus.UNPROCESSABLE_ENTITY,
+    );
   }
 
   async purchase(input: {
@@ -278,7 +370,12 @@ export class UsageRightService {
     });
   }
 
-  async transfer(usageRightId: string, newOwnerUserId: string) {
+  async transfer(
+    usageRightId: string,
+    newOwnerUserId: string,
+    onchainTxHash: string,
+    actorWalletAddress: string,
+  ) {
     const right = await this.prisma.usageRight.findUnique({
       where: { id: usageRightId },
     });
@@ -318,25 +415,38 @@ export class UsageRightService {
     const fromWallet = this.requireWalletAddress(currentOwner?.walletAddress, '現在所有者');
     const toWallet = this.requireWalletAddress(nextOwner?.walletAddress, '新しい所有者');
     const tokenId = BigInt(right.onchainTokenId);
-
-    this.logger.log(
-      `[usage-right.transfer] start rightId=${right.id} tokenId=${tokenId.toString()} from=${fromWallet} to=${toWallet}`,
-    );
-    const txHash = await this.usageRightContract.transferUsageRight(fromWallet, toWallet, tokenId);
-    if (!txHash) {
-      this.logger.error(`[usage-right.transfer] onchain transfer failed rightId=${right.id}`);
+    const actorWallet = this.requireWalletAddress(actorWalletAddress, '実行者');
+    if (fromWallet.toLowerCase() !== actorWallet.toLowerCase()) {
       throw new HttpException(
-        { message: 'オンチェーン譲渡に失敗しました' },
-        HttpStatus.BAD_GATEWAY,
+        { message: 'この利用権の譲渡権限がありません' },
+        HttpStatus.FORBIDDEN,
       );
     }
-    this.logger.log(`[usage-right.transfer] onchain done rightId=${right.id} txHash=${txHash}`);
+    if (fromWallet.toLowerCase() === toWallet.toLowerCase()) {
+      throw new HttpException(
+        { message: '譲渡先ウォレットが現在所有者と同一です' },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+
+    this.logger.log(
+      `[usage-right.transfer] verify start rightId=${right.id} tokenId=${tokenId.toString()} from=${fromWallet} to=${toWallet} txHash=${onchainTxHash}`,
+    );
+    const txHash = await this.verifyTransferEventOrThrow({
+      txHash: onchainTxHash,
+      tokenId: tokenId.toString(),
+      fromWallet,
+      toWallet,
+    });
+    this.logger.log(`[usage-right.transfer] verify done rightId=${right.id} txHash=${txHash}`);
 
     return this.prisma.usageRight.update({
       where: { id: usageRightId },
       data: {
         ownerUserId,
         transferCount: { increment: 1 },
+        status: 'MINTED',
+        onchainTxHash: txHash,
       },
     });
   }

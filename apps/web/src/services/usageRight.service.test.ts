@@ -156,10 +156,10 @@ describe('UsageRightService', () => {
   });
 
   describe('transfer', () => {
-    it('calls client transferUsageRight with id, newOwnerUserId, idempotencyKey', async () => {
+    it('calls client transferUsageRight with id, newOwnerUserId, onchainTxHash, idempotencyKey', async () => {
       mockTransferUsageRight.mockResolvedValue(undefined);
-      await UsageRightService.transfer('ur-1', 'user-2', 'idem-key-1');
-      expect(mockTransferUsageRight).toHaveBeenCalledWith('ur-1', 'user-2', 'idem-key-1');
+      await UsageRightService.transfer('ur-1', 'user-2', '0xabc', 'idem-key-1');
+      expect(mockTransferUsageRight).toHaveBeenCalledWith('ur-1', 'user-2', '0xabc', 'idem-key-1');
     });
   });
 

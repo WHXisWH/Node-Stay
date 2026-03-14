@@ -68,7 +68,7 @@ export function useAaTransaction(): UseAaTransactionReturn {
       const msg = e instanceof Error ? e.message : 'UserOperation の送信に失敗しました。';
       setError(msg);
       setStatus('error');
-      return null;
+      throw (e instanceof Error ? e : new Error(msg));
     }
   }, []);
 

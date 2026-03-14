@@ -1,8 +1,9 @@
 /**
  * ユーザーストア。
- * アドレスは役割ごとに3フィールドで管理する。
+ * アドレスは役割ごとに4フィールドで管理する。
  *   connectedWalletAddress — wagmi で注入された外部ウォレットアドレス
- *   socialWalletAddress    — Web3Auth / SNS ログイン由来のスマートウォレットアドレス
+ *   socialWalletAddress    — Web3Auth / SNS ログイン由来の Owner EOA アドレス
+ *   aaWalletAddress        — SNS ログイン時に利用する AA スマートアカウントアドレス
  *   walletAddress          — SIWE 認証済みアドレス（トランザクション送信に使用）
  * balance は UserService が書き込む（SPEC §9）。
  */
@@ -17,8 +18,10 @@ export type LoginMethod = 'social' | 'wallet' | null;
 export interface UserState {
   /** wagmi 注入ウォレットの接続アドレス（未接続時は null） */
   connectedWalletAddress: `0x${string}` | null;
-  /** SNS / Web3Auth 由来のスマートウォレットアドレス（未ログイン時は null） */
+  /** SNS / Web3Auth 由来の Owner EOA アドレス（未ログイン時は null） */
   socialWalletAddress: `0x${string}` | null;
+  /** SNS ログイン時の AA スマートアカウントアドレス（未初期化時は null） */
+  aaWalletAddress: `0x${string}` | null;
   /** SIWE 認証済みアドレス（トランザクション送信に使用）。未認証時は null */
   walletAddress: `0x${string}` | null;
   /** SIWE 認証後に発行される JWT（未認証時は null） */
@@ -39,6 +42,8 @@ export interface UserActions {
   setConnectedWalletAddress: (address: `0x${string}` | null) => void;
   /** SNS / Web3Auth アドレスを設定する */
   setSocialWalletAddress: (address: `0x${string}` | null) => void;
+  /** AA スマートアカウントアドレスを設定する */
+  setAaWalletAddress: (address: `0x${string}` | null) => void;
   /** SIWE 認証済みアドレスを設定する（auth.service.ts からのみ呼び出す） */
   setWalletAddress: (address: `0x${string}` | null) => void;
   setJwt: (jwt: string | null) => void;
@@ -56,6 +61,7 @@ export interface UserActions {
 const initialState: UserState = {
   connectedWalletAddress: null,
   socialWalletAddress:    null,
+  aaWalletAddress:        null,
   walletAddress:          null,
   jwt:                    null,
   isAuthenticated:        false,
@@ -72,6 +78,7 @@ export const useUserStore = create<UserState & UserActions>()(
       ...initialState,
       setConnectedWalletAddress: (connectedWalletAddress) => set({ connectedWalletAddress }),
       setSocialWalletAddress:    (socialWalletAddress)    => set({ socialWalletAddress }),
+      setAaWalletAddress:        (aaWalletAddress)        => set({ aaWalletAddress }),
       setWalletAddress:          (walletAddress)          => set({ walletAddress }),
       setJwt:        (jwt) => set({ jwt, isAuthenticated: jwt !== null }),
       setLoginMethod: (loginMethod) => set({ loginMethod }),
@@ -81,6 +88,7 @@ export const useUserStore = create<UserState & UserActions>()(
         walletAddress:          null,
         connectedWalletAddress: null,
         socialWalletAddress:    null,
+        aaWalletAddress:        null,
         loginMethod:            null,
         balance:                null,
         activeSessionId:        null,

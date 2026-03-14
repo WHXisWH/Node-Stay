@@ -16,11 +16,16 @@ export interface UseUserStateReturn {
   walletAddress: `0x${string}` | null;
   /** wagmi 注入ウォレットのアドレス（未接続時は null） */
   connectedWalletAddress: `0x${string}` | null;
-  /** SNS / Web3Auth スマートウォレットのアドレス（未ログイン時は null） */
+  /** SNS / Web3Auth の Owner EOA アドレス（未ログイン時は null） */
   socialWalletAddress: `0x${string}` | null;
+  /** SNS ログイン時の AA スマートアカウントアドレス（未初期化時は null） */
+  aaWalletAddress: `0x${string}` | null;
+  /** 実際のオンチェーン送信に利用する主アドレス */
+  onchainWalletAddress: `0x${string}` | null;
   /**
    * UI 表示用アドレス。
-   * ソーシャルログイン時 → socialWalletAddress、ウォレットログイン時 → connectedWalletAddress。
+   * ソーシャルログイン時 → aaWalletAddress 優先（未初期化時は socialWalletAddress）。
+   * ウォレットログイン時 → connectedWalletAddress。
    */
   displayAddress: `0x${string}` | null;
   isAuthenticated: boolean;
@@ -40,6 +45,7 @@ export function useUserState(): UseUserStateReturn {
   const walletAddress         = useUserStore((s) => s.walletAddress);
   const connectedWalletAddress = useUserStore((s) => s.connectedWalletAddress);
   const socialWalletAddress   = useUserStore((s) => s.socialWalletAddress);
+  const aaWalletAddress       = useUserStore((s) => s.aaWalletAddress);
   const jwt                   = useUserStore((s) => s.jwt);
   const isAuthenticated       = useUserStore((s) => s.isAuthenticated);
   const loginMethod           = useUserStore((s) => s.loginMethod);
@@ -77,23 +83,31 @@ export function useUserState(): UseUserStateReturn {
 
   // ログイン方法に応じて表示用アドレスを切り替える
   const displayAddress: `0x${string}` | null = useMemo(() => {
-    if (loginMethod === 'social') return socialWalletAddress;
+    if (loginMethod === 'social') return aaWalletAddress ?? socialWalletAddress;
     if (loginMethod === 'wallet') return connectedWalletAddress;
-    return connectedWalletAddress ?? socialWalletAddress ?? null;
-  }, [loginMethod, socialWalletAddress, connectedWalletAddress]);
+    return connectedWalletAddress ?? aaWalletAddress ?? socialWalletAddress ?? null;
+  }, [aaWalletAddress, loginMethod, socialWalletAddress, connectedWalletAddress]);
+
+  const onchainWalletAddress: `0x${string}` | null = useMemo(() => {
+    if (loginMethod === 'social') return aaWalletAddress ?? socialWalletAddress ?? walletAddress;
+    if (loginMethod === 'wallet') return walletAddress ?? connectedWalletAddress;
+    return walletAddress ?? connectedWalletAddress ?? aaWalletAddress ?? socialWalletAddress ?? null;
+  }, [aaWalletAddress, connectedWalletAddress, loginMethod, socialWalletAddress, walletAddress]);
 
   const walletLabel = useMemo(() => {
     if (!displayAddress) return '未接続';
     return shortAddress(displayAddress);
   }, [displayAddress]);
 
-  const addressTypeLabel = loginMethod === 'social' ? 'スマートウォレット' : 'ウォレット';
+  const addressTypeLabel = loginMethod === 'social' ? 'AAウォレット' : 'ウォレット';
 
   return {
     balance,
     walletAddress,
     connectedWalletAddress,
     socialWalletAddress,
+    aaWalletAddress,
+    onchainWalletAddress,
     displayAddress,
     isAuthenticated,
     loginMethod,

@@ -69,6 +69,7 @@ export interface SubmitJobInput {
   estimatedHours: number;
   taskType: string;
   paymentTxHash?: string;
+  payerWallet?: `0x${string}`;
   taskSpec: {
     command: string;
     inputUri: string;

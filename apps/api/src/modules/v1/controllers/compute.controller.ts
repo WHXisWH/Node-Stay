@@ -7,6 +7,7 @@ import { CurrentUser, type AuthenticatedUser } from '../decorators/current-user.
 
 const SubmitJobBody = z.object({
   requesterId: z.string().min(1).optional(),
+  payerWallet: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   nodeId: z.string().min(1),
   estimatedHours: z.number().int().min(1),
   taskType: z.string().min(1),
@@ -60,7 +61,8 @@ export class ComputeController {
     }
 
     const job = await this.compute.submitJob({
-      requesterAddress: user.address,
+      requesterAddress: parsed.data.payerWallet ?? user.address,
+      requesterUserAddress: user.address,
       requesterId: parsed.data.requesterId,
       nodeId: parsed.data.nodeId,
       estimatedHours: parsed.data.estimatedHours,

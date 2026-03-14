@@ -224,6 +224,7 @@ export class ComputeService {
 
   async submitJob(input: {
     requesterAddress: string;
+    requesterUserAddress?: string;
     requesterId?: string;
     nodeId: string;
     estimatedHours: number;
@@ -232,7 +233,9 @@ export class ComputeService {
     paymentTxHash?: string | null;
   }) {
     const buyerWallet = this.requireWalletAddress(input.requesterAddress, '購入者');
-    const buyerUserId = await this.userService.findOrCreateByWallet(buyerWallet);
+    const buyerUserId = await this.userService.findOrCreateByWallet(
+      input.requesterUserAddress ?? buyerWallet,
+    );
 
     const product = await this.resolveProductForNodeId(input.nodeId);
     if (!product) {
@@ -324,6 +327,7 @@ export class ComputeService {
             nodeId: input.nodeId,
             estimatedHours: input.estimatedHours,
             paymentTxHash: input.paymentTxHash ?? null,
+            payerWallet: buyerWallet,
           })
         : null;
 
@@ -380,7 +384,21 @@ export class ComputeService {
       where: { id: job.buyerUserId },
       select: { walletAddress: true },
     });
-    const buyerWallet = this.requireWalletAddress(buyer?.walletAddress, '購入者');
+    let schedulerPayerWallet: string | null = null;
+    if (job.schedulerRef) {
+      try {
+        const parsed = JSON.parse(job.schedulerRef) as { payerWallet?: unknown };
+        if (typeof parsed.payerWallet === 'string') {
+          schedulerPayerWallet = parsed.payerWallet;
+        }
+      } catch {
+        schedulerPayerWallet = null;
+      }
+    }
+    const buyerWallet = this.requireWalletAddress(
+      schedulerPayerWallet ?? buyer?.walletAddress,
+      '購入者',
+    );
     const tokenId = BigInt(job.computeRight.onchainTokenId);
     const chainData = await this.computeRightContract.getComputeData(tokenId);
     if (!chainData) {

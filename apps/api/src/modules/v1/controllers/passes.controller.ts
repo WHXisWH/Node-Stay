@@ -13,6 +13,7 @@ const PurchaseBody = z.object({
 
 const TransferBody = z.object({
   newOwnerUserId: z.string().min(1),
+  onchainTxHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
 });
 
 @Controller('/v1/usage-rights')
@@ -77,7 +78,7 @@ export class PassesController {
 
   @Post('/:usageRightId/transfer')
   async transfer(
-    @CurrentUser() _user: AuthenticatedUser,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('usageRightId') usageRightId: string,
     @Body() body: unknown,
     @Headers('idempotency-key') rawKey: string | undefined,
@@ -86,13 +87,18 @@ export class PassesController {
     if (!rawKey) throw new HttpException({ message: 'Idempotency-Key が必要です' }, HttpStatus.BAD_REQUEST);
 
     const parsed = TransferBody.safeParse(body);
-    if (!parsed.success) throw new HttpException({ message: '入力が不正です（newOwnerUserId 必須）' }, HttpStatus.BAD_REQUEST);
+    if (!parsed.success) {
+      throw new HttpException(
+        { message: '入力が不正です（newOwnerUserId / onchainTxHash 必須）' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
 
     let key: ReturnType<typeof normalizeIdempotencyKey>;
     try { key = normalizeIdempotencyKey(rawKey); }
     catch { throw new HttpException({ message: 'Idempotency-Key が不正です' }, HttpStatus.BAD_REQUEST); }
 
-    const requestHash = this.idempotency.hashRequest({ usageRightId, ...parsed.data });
+    const requestHash = this.idempotency.hashRequest({ usageRightId, ...parsed.data, actor: user.address });
     const existing = await this.idempotency.get(key);
     if (existing) {
       if (existing.requestHash !== requestHash) throw new HttpException({ message: '同一キーで内容が異なります' }, HttpStatus.CONFLICT);
@@ -109,7 +115,12 @@ export class PassesController {
       throw new HttpException({ message: '譲渡期限が過ぎています' }, HttpStatus.FORBIDDEN);
     }
 
-    const result = await this.usageRight.transfer(usageRightId, parsed.data.newOwnerUserId);
+    const result = await this.usageRight.transfer(
+      usageRightId,
+      parsed.data.newOwnerUserId,
+      parsed.data.onchainTxHash,
+      user.address,
+    );
     if (!result) throw new HttpException({ message: '利用権が見つからないか、譲渡できません' }, HttpStatus.NOT_FOUND);
 
     const response = { usageRightId: result.id, status: result.status };

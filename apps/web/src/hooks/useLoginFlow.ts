@@ -29,6 +29,7 @@ export interface UseLoginFlowParams {
 export interface UseLoginFlowReturn {
   loginStep: LoginStep;
   socialHint: string | null;
+  aaHint: string | null;
   authError: string | null;
   connectErrorMessage: string | null;
   /** ログイン操作中かどうか（ボタン disabled 判定用） */
@@ -36,6 +37,8 @@ export interface UseLoginFlowReturn {
   /** Header 主ボタンの文案（3 状態: 未接続 / 接続済み未認証 / 認証済み） */
   walletActionLabel: string;
   clearMessages: () => void;
+  ensureAaWallet: () => Promise<void>;
+  aaResolving: boolean;
   handleWalletLogin: () => Promise<void>;
   handleSocialLogin: () => Promise<void>;
   handleLogout: () => Promise<void>;
@@ -52,8 +55,11 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
   // ログインフロー状態機械
   const [loginStep, setLoginStep] = useState<LoginStep>('idle');
   const [socialHint, setSocialHint] = useState<string | null>(null);
+  const [aaHint, setAaHint] = useState<string | null>(null);
+  const [aaResolving, setAaResolving] = useState(false);
 
   const setSocialWalletAddress = useUserStore((s) => s.setSocialWalletAddress);
+  const setAaWalletAddress = useUserStore((s) => s.setAaWalletAddress);
   const setLoginMethod          = useUserStore((s) => s.setLoginMethod);
   const router = useRouter();
   const pathname = usePathname();
@@ -76,6 +82,10 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
         const restored = await Web3AuthService.restoreSocialSession();
         if (!active || !restored?.address) return;
         setSocialWalletAddress(restored.address);
+        const aaAddress = await Web3AuthService.resolveAaWalletAddress().catch(() => null);
+        if (active && aaAddress) {
+          setAaWalletAddress(aaAddress);
+        }
       } catch {
         // 復元失敗時は未処理。購入時に getOrRestoreProvider が再試行し、
         // それでも不可なら「再ログインしてください」を返す。
@@ -83,7 +93,7 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
     })();
 
     return () => { active = false; };
-  }, [isAuthenticated, loginMethod, setSocialWalletAddress]);
+  }, [isAuthenticated, loginMethod, setAaWalletAddress, setSocialWalletAddress]);
 
   /** 認証完了時: モーダルを閉じてリダイレクト処理 */
   useEffect(() => {
@@ -132,12 +142,36 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
   /** エラーメッセージとヒントをリセットし、状態を idle に戻す */
   const clearMessages = useCallback(() => {
     setSocialHint(null);
+    setAaHint(null);
     setLoginStep((prev) => (prev === 'error' ? 'idle' : prev));
   }, []);
+
+  const ensureAaWallet = useCallback(async () => {
+    if (loginMethod !== 'social' || !isAuthenticated) {
+      setAaHint('ソーシャルログイン後に AA ウォレットを初期化できます。');
+      return;
+    }
+    setAaHint(null);
+    setAaResolving(true);
+    try {
+      const aaAddress = await Web3AuthService.resolveAaWalletAddress();
+      if (!aaAddress) {
+        setAaHint('AA ウォレットの初期化に失敗しました。再ログインしてください。');
+        return;
+      }
+      setAaWalletAddress(aaAddress);
+      setAaHint('AA ウォレットを更新しました。');
+    } catch (error: unknown) {
+      setAaHint(error instanceof Error ? error.message : 'AA ウォレットの初期化に失敗しました。');
+    } finally {
+      setAaResolving(false);
+    }
+  }, [isAuthenticated, loginMethod, setAaWalletAddress]);
 
   /** ウォレットログイン（MetaMask 等の注入ウォレット） */
   const handleWalletLogin = useCallback(async () => {
     setSocialHint(null);
+    setAaHint(null);
     if (isAuthenticated) { onCloseModal(); return; }
 
     if (wagmiAddress) {
@@ -174,6 +208,7 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
   /** ソーシャルログイン（Google / X / Email → Web3Auth → SIWE） */
   const handleSocialLogin = useCallback(async () => {
     setSocialHint(null);
+    setAaHint(null);
     setLoginStep('connecting');
     try {
       // SNS OAuth + Web3Auth でスマートウォレットを取得
@@ -193,17 +228,24 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
         // 失敗時はソーシャルウォレット情報をクリアして error へ
         setLoginStep('error');
         setSocialWalletAddress(null);
+        setAaWalletAddress(null);
         setLoginMethod(null);
         setSocialHint('署名または認証に失敗しました。もう一度お試しください。');
+      } else {
+        const aaAddress = await Web3AuthService.resolveAaWalletAddress().catch(() => null);
+        if (aaAddress) {
+          setAaWalletAddress(aaAddress);
+        }
       }
       // 成功時は isAuthenticated が true になったタイミングの useEffect が処理する
     } catch (err: unknown) {
       setLoginStep('error');
       setSocialWalletAddress(null);
+      setAaWalletAddress(null);
       setLoginMethod(null);
       setSocialHint(err instanceof Error ? err.message : 'ソーシャルログインに失敗しました。');
     }
-  }, [setSocialWalletAddress, setLoginMethod, signInWithCustomSigner]);
+  }, [setAaWalletAddress, setSocialWalletAddress, setLoginMethod, signInWithCustomSigner]);
 
   /** ログアウト */
   const handleLogout = useCallback(async () => {
@@ -212,6 +254,7 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
     await Web3AuthService.logout().catch(() => {});
     setLoginStep('idle');
     setSocialHint(null);
+    setAaHint(null);
     onCloseModal();
     if (isProtectedPath(pathname)) {
       router.replace('/');
@@ -242,11 +285,14 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
   return {
     loginStep,
     socialHint,
+    aaHint,
     authError,
     connectErrorMessage: connectError?.message ?? null,
     isLoading,
     walletActionLabel,
     clearMessages,
+    ensureAaWallet,
+    aaResolving,
     handleWalletLogin,
     handleSocialLogin,
     handleLogout,

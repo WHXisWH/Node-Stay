@@ -7,8 +7,15 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import { waitForTransactionReceipt } from '@wagmi/core';
+import { encodeFunctionData, isAddress } from 'viem';
+import { useAccount, useConfig, useWriteContract } from 'wagmi';
 import { createNodeStayClient } from '../services/nodestay';
+import { CONTRACT_ADDRESSES } from '../services/config';
+import { useUserStore } from '../stores/user.store';
+import { useAaTransaction } from './useAaTransaction';
 import type { UsageRightStatus } from './usePassesPage';
+import { resolveTxMode } from './txMode';
 
 export interface UsageRightDetail {
   usageRightId: string;
@@ -58,6 +65,22 @@ export interface UseUsageRightDetailReturn {
   cancelSuccess: boolean;
   handleCancel: () => Promise<void>;
 }
+
+const USAGE_RIGHT_ADDRESS = CONTRACT_ADDRESSES.usageRight as `0x${string}`;
+
+const ERC721_SAFE_TRANSFER_ABI = [
+  {
+    name: 'safeTransferFrom',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'from', type: 'address' },
+      { name: 'to', type: 'address' },
+      { name: 'tokenId', type: 'uint256' },
+    ],
+    outputs: [],
+  },
+] as const;
 
 // API レスポンスの status 文字列を UsageRightStatus に正規化する
 function toUsageRightStatus(s: string): UsageRightStatus {
@@ -123,7 +146,35 @@ function parseApiErrorMessage(error: unknown): string {
   return fallback;
 }
 
+function parseTransferErrorMessage(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  if (!raw) return '譲渡処理に失敗しました。しばらく経ってから再試行してください。';
+  if (/user rejected|rejected the request/i.test(raw)) {
+    return '署名がキャンセルされました。';
+  }
+  if (/connector not connected/i.test(raw)) {
+    return 'ウォレット接続が切れています。再ログインしてください。';
+  }
+  if (/insufficient approval|ERC721InsufficientApproval/i.test(raw)) {
+    return 'NFT の譲渡権限が不足しています。所有者アカウントで再実行してください。';
+  }
+  return parseApiErrorMessage(error);
+}
+
+function isConnectorNotConnectedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /connector not connected/i.test(message);
+}
+
 export function useUsageRightDetail(id: string | undefined): UseUsageRightDetailReturn {
+  const loginMethod = useUserStore((s) => s.loginMethod);
+  const walletAddress = useUserStore((s) => s.walletAddress);
+  const { isConnected, address: connectedWalletAddress } = useAccount();
+  const mode = resolveTxMode(loginMethod, isConnected);
+  const config = useConfig();
+  const { writeContractAsync } = useWriteContract();
+  const { sendUserOp } = useAaTransaction();
+
   const [right, setRight] = useState<UsageRightDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -232,11 +283,24 @@ export function useUsageRightDetail(id: string | undefined): UseUsageRightDetail
 
   const handleTransfer = async () => {
     const addr = transferInput.toWalletAddress.trim();
-    if (!addr.startsWith('0x') || addr.length !== 42) {
+    if (!isAddress(addr)) {
       setTransferError('有効なウォレットアドレス（0x...）を入力してください');
       return;
     }
     if (!id) return;
+    if (!right?.onchainTokenId) {
+      setTransferError('オンチェーン Token ID が未設定のため譲渡できません。');
+      return;
+    }
+    const fromWallet = (connectedWalletAddress ?? walletAddress ?? '').trim();
+    if (!isAddress(fromWallet)) {
+      setTransferError('ウォレット情報が取得できません。再ログインしてください。');
+      return;
+    }
+    if (fromWallet.toLowerCase() === addr.toLowerCase()) {
+      setTransferError('譲渡先ウォレットが現在所有者と同一です。');
+      return;
+    }
     if (right?.transferCutoff) {
       const cutoffMs = new Date(right.transferCutoff).getTime();
       if (Number.isFinite(cutoffMs) && Date.now() >= cutoffMs) {
@@ -248,15 +312,56 @@ export function useUsageRightDetail(id: string | undefined): UseUsageRightDetail
     setTransferring(true);
     setTransferError(null);
     try {
+      const tokenId = BigInt(right.onchainTokenId);
+      const sendViaAa = async (): Promise<`0x${string}`> => {
+        const transferData = encodeFunctionData({
+          abi: ERC721_SAFE_TRANSFER_ABI,
+          functionName: 'safeTransferFrom',
+          args: [fromWallet as `0x${string}`, addr as `0x${string}`, tokenId],
+        });
+        const result = await sendUserOp([
+          {
+            to: USAGE_RIGHT_ADDRESS,
+            data: transferData,
+            value: 0n,
+          },
+        ]);
+        if (!result?.txHash) {
+          throw new Error('AA での譲渡トランザクション送信に失敗しました。');
+        }
+        return result.txHash;
+      };
+
+      let onchainTxHash: `0x${string}`;
+      if (mode === 'aa') {
+        onchainTxHash = await sendViaAa();
+      } else {
+        try {
+          const txHash = await writeContractAsync({
+            address: USAGE_RIGHT_ADDRESS,
+            abi: ERC721_SAFE_TRANSFER_ABI,
+            functionName: 'safeTransferFrom',
+            args: [fromWallet as `0x${string}`, addr as `0x${string}`, tokenId],
+          });
+          await waitForTransactionReceipt(config, { hash: txHash });
+          onchainTxHash = txHash;
+        } catch (walletError) {
+          if (loginMethod !== 'wallet' && isConnectorNotConnectedError(walletError)) {
+            onchainTxHash = await sendViaAa();
+          } else {
+            throw walletError;
+          }
+        }
+      }
+
       const client = createNodeStayClient();
-      // 譲渡先ウォレットアドレスを新所有者 ID として渡す
-      await client.transferUsageRight(id, addr, crypto.randomUUID());
+      await client.transferUsageRight(id, addr, onchainTxHash, crypto.randomUUID());
       setTransferSuccess(true);
       setShowTransfer(false);
       // 譲渡成功後に詳細を再取得して状態を同期する
       await loadDetail();
     } catch (error) {
-      setTransferError(parseApiErrorMessage(error));
+      setTransferError(parseTransferErrorMessage(error));
     } finally {
       setTransferring(false);
     }

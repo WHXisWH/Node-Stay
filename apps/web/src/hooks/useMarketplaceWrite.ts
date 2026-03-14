@@ -58,7 +58,7 @@ export function useMarketplaceWrite() {
   const loginMethod = useUserStore((s) => s.loginMethod);
   const { isConnected } = useAccount();
   const mode = resolveTxMode(loginMethod, isConnected);
-  const { sendUserOp, error: aaError } = useAaTransaction();
+  const { sendUserOp } = useAaTransaction();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -81,8 +81,7 @@ export function useMarketplaceWrite() {
           },
         ]);
         if (!result) {
-          setError(aaError ?? 'AA での出品トランザクション送信に失敗しました');
-          return null;
+          throw new Error('AA での出品トランザクション送信に失敗しました');
         }
         return result.txHash;
       };
@@ -144,8 +143,7 @@ export function useMarketplaceWrite() {
           },
         ]);
         if (!result) {
-          setError(aaError ?? 'AA での購入トランザクション送信に失敗しました');
-          return null;
+          throw new Error('AA での購入トランザクション送信に失敗しました');
         }
         return result.txHash;
       };
@@ -200,8 +198,7 @@ export function useMarketplaceWrite() {
           },
         ]);
         if (!result) {
-          setError(aaError ?? 'AA での出品取消トランザクション送信に失敗しました');
-          return null;
+          throw new Error('AA での出品取消トランザクション送信に失敗しました');
         }
         return result.txHash;
       };

@@ -1,5 +1,6 @@
 import { createWalletClient, custom } from 'viem';
 import { CHAIN_CONFIG } from './config';
+import { buildKernelClient } from './aa/kernelClient';
 
 const CLIENT_ID = process.env.NEXT_PUBLIC_WEB3AUTH_CLIENT_ID ?? '';
 const REQUESTED_NETWORK = process.env.NEXT_PUBLIC_WEB3AUTH_NETWORK ?? 'sapphire_devnet';
@@ -171,6 +172,17 @@ class Web3AuthServiceClass {
 
   async logout(): Promise<void> {
     await resetWeb3Auth();
+  }
+
+  /**
+   * 接続済みプロバイダから AA スマートアカウントアドレスを導出する。
+   * セッション未接続時は null を返す。
+   */
+  async resolveAaWalletAddress(): Promise<`0x${string}` | null> {
+    const provider = await this.getOrRestoreProvider();
+    if (!provider) return null;
+    const { smartAccountAddress } = await buildKernelClient(provider);
+    return smartAccountAddress as `0x${string}`;
   }
 
   /**
