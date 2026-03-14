@@ -67,6 +67,13 @@ export function useMerchantCompute(): UseMerchantComputeReturn {
       const merchantVenues = await client.listMyMerchantVenues();
       const nextVenues = merchantVenues.map((venue) => ({ venueId: venue.venueId, name: venue.name }));
       setVenues(nextVenues);
+      if (merchantVenues.length === 0) {
+        setVenueName('');
+        setCurrentVenueId('');
+        setNodes([]);
+        setSaveError('加盟店店舗が見つかりません。先に加盟店ダッシュボードで店舗を作成してください。');
+        return;
+      }
       const venue = merchantVenues.find((v) => v.venueId === currentVenueId) ?? merchantVenues[0];
 
       if (!venue) {
@@ -99,8 +106,9 @@ export function useMerchantCompute(): UseMerchantComputeReturn {
           earnings: node.earnings,
         })),
       );
-    } catch {
+    } catch (error) {
       setNodes([]);
+      setSaveError(parseSaveError(error));
     } finally {
       setLoading(false);
     }

@@ -193,7 +193,7 @@ export default function MerchantDashboardPage() {
           <div className="flex items-end justify-between gap-4 flex-wrap">
             <div>
               <p className="text-slate-400 text-sm mb-1">加盟店管理</p>
-              <h1 className="text-3xl font-extrabold text-white">{venueName}</h1>
+              <h1 className="text-3xl font-extrabold text-white">{venueName || '店舗未設定'}</h1>
             </div>
             {/* クイックリンク */}
             <div className="flex gap-2">
@@ -213,6 +213,11 @@ export default function MerchantDashboardPage() {
 
       {/* メインコンテンツ */}
       <div className="container-main py-8 flex flex-col gap-8">
+        {!venueId && (
+          <div className="card p-4 border border-amber-200 bg-amber-50 text-amber-700 text-sm font-semibold">
+            加盟店店舗が未設定です。先に店舗を作成してください。
+          </div>
+        )}
 
         {/* 期間セレクター */}
         <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">

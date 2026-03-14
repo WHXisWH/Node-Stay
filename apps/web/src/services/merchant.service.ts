@@ -70,18 +70,23 @@ class MerchantServiceClass {
     return this._client;
   }
 
+  private async listMyVenues(): Promise<MerchantVenueItem[]> {
+    const rows = await this.client.listMyMerchantVenues();
+    return rows.map((v) => ({
+      venueId: v.venueId,
+      name: v.name,
+      address: v.address,
+      timezone: v.timezone,
+    }));
+  }
+
   async loadVenues(): Promise<void> {
     const store = getMerchantStore();
     store.setLoading(true);
     store.setError(null);
     try {
-      const rows = await this.client.listVenues();
-      const venues: MerchantVenueItem[] = rows.map((v) => ({
-        venueId: v.venueId,
-        name: v.name,
-        address: v.address,
-        timezone: v.timezone,
-      }));
+      // 加盟店コンテキストでは自分の店舗のみを扱う。
+      const venues = await this.listMyVenues();
       store.setVenues(venues);
     } catch (e) {
       store.setError(e instanceof Error ? e.message : 'Failed to load venues');
@@ -102,7 +107,10 @@ class MerchantServiceClass {
         targetVenueId = venues[0].venueId;
       }
     }
-    if (!targetVenueId) return;
+    if (!targetVenueId) {
+      store.setMachines([]);
+      return;
+    }
 
     store.setLoading(true);
     store.setError(null);
@@ -152,20 +160,19 @@ class MerchantServiceClass {
     store.setLoading(true);
     store.setError(null);
     try {
-      const [venues, rawMachines] = await Promise.all([
-        this.client.listVenues(),
-        this.client.listMachines(),
-      ]);
-      const venueList: MerchantVenueItem[] = venues.map((v) => ({
-        venueId: v.venueId,
-        name: v.name,
-        address: v.address,
-        timezone: v.timezone,
-      }));
+      const venueList = await this.listMyVenues();
       store.setVenues(venueList);
-      const firstVenueId = venueList[0]?.venueId;
-      const forVenue = firstVenueId ? rawMachines.filter((m) => m.venueId === firstVenueId) : rawMachines;
-      const machines: MerchantMachineItem[] = forVenue.map((m) => ({
+      if (venueList.length === 0) {
+        store.setMachines([]);
+        return;
+      }
+
+      const machineRows = await Promise.all(
+        venueList.map((venue) => this.client.listMachines({ venueId: venue.venueId })),
+      );
+      const rawMachines = machineRows.flat();
+
+      const machines: MerchantMachineItem[] = rawMachines.map((m) => ({
         id: m.id,
         machineId: m.machineId,
         venueId: m.venueId,
@@ -195,7 +202,10 @@ class MerchantServiceClass {
       if (store.venues.length === 0) await this.loadVenues();
       targetVenueId = getMerchantStore().venues[0]?.venueId;
     }
-    if (!targetVenueId) return;
+    if (!targetVenueId) {
+      store.setUsageProducts([]);
+      return;
+    }
 
     store.setLoading(true);
     store.setError(null);
@@ -230,15 +240,16 @@ class MerchantServiceClass {
       if (store.venues.length === 0) await this.loadVenues();
       targetVenueId = getMerchantStore().venues[0]?.venueId;
     }
-    if (!targetVenueId) return;
+    if (!targetVenueId) {
+      store.setComputeNodes([]);
+      return;
+    }
 
     store.setLoading(true);
     store.setError(null);
     try {
-      const [venues, raw] = await Promise.all([
-        this.client.listVenues(),
-        this.client.listMachines({ venueId: targetVenueId }),
-      ]);
+      const venues = store.venues.length > 0 ? store.venues : await this.listMyVenues();
+      const raw = await this.client.listMachines({ venueId: targetVenueId });
       const venueName = venues.find((v) => v.venueId === targetVenueId)?.name ?? '';
       const nodes: ManagedNode[] = raw.map((m) => ({
         nodeId: m.id,
@@ -265,7 +276,7 @@ class MerchantServiceClass {
         earnings: { thisMonthMinor: 0, totalMinor: 0, completedJobs: 0, uptimePercent: 0 },
       }));
       store.setComputeNodes(nodes);
-      store.setVenues(venues.map((v) => ({ venueId: v.venueId, name: v.name, address: v.address, timezone: v.timezone })));
+      store.setVenues(venues);
     } catch (e) {
       store.setError(e instanceof Error ? e.message : 'Failed to load compute nodes');
     } finally {
@@ -278,11 +289,23 @@ class MerchantServiceClass {
     store.setLoading(true);
     store.setError(null);
     try {
-      const [apiMachines, apiPrograms] = await Promise.all([
-        this.client.listMachines(),
-        this.client.listRevenuePrograms(),
-      ]);
-      const programs: MerchantRevenueProgramItem[] = apiPrograms.map((p) => ({
+      const venues = await this.listMyVenues();
+      store.setVenues(venues);
+      if (venues.length === 0) {
+        store.setRevenuePrograms([]);
+        store.setRevenueProgramsMachines([]);
+        return;
+      }
+
+      const machineRows = await Promise.all(
+        venues.map((venue) => this.client.listMachines({ venueId: venue.venueId })),
+      );
+      const apiMachines = machineRows.flat();
+      const machineIds = new Set(apiMachines.map((m) => m.id));
+      const apiPrograms = await this.client.listRevenuePrograms();
+      const filteredPrograms = apiPrograms.filter((program) => machineIds.has(program.machineId));
+
+      const programsForMerchant: MerchantRevenueProgramItem[] = filteredPrograms.map((p) => ({
         id: p.id,
         machineId: p.machineId,
         shareBps: p.shareBps,
@@ -299,7 +322,7 @@ class MerchantServiceClass {
         status: m.status,
         localLabel: `${m.machineClass} / ${m.machineId.slice(0, 10)}...`,
       }));
-      store.setRevenuePrograms(programs);
+      store.setRevenuePrograms(programsForMerchant);
       store.setRevenueProgramsMachines(options);
     } catch (e) {
       store.setError(e instanceof Error ? e.message : 'Failed to load revenue programs');

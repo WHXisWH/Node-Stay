@@ -80,12 +80,12 @@ export default function MerchantRevenueProgramsPage() {
     setError(null);
     try {
       const [merchantVenues, apiPrograms] = await Promise.all([
-        client.listMyMerchantVenues().catch(() => []),
+        client.listMyMerchantVenues(),
         client.listRevenuePrograms(),
       ]);
       if (merchantVenues.length === 0) {
         setMachines([]);
-        setPrograms(apiPrograms);
+        setPrograms([]);
         setError('加盟店店舗が見つかりません。先に店舗を作成してください。');
         return;
       }
@@ -93,6 +93,7 @@ export default function MerchantRevenueProgramsPage() {
         merchantVenues.map((venue) => client.listMachines({ venueId: venue.venueId })),
       );
       const apiMachines = machineRowsByVenue.flat();
+      const machineIdSet = new Set(apiMachines.map((machine) => machine.id));
 
       const machineRows: MachineRow[] = apiMachines.map((m) => ({
         id: m.id,
@@ -114,7 +115,7 @@ export default function MerchantRevenueProgramsPage() {
         setMerchantId(merchantVenues[0].merchantId);
       }
 
-      setPrograms(apiPrograms);
+      setPrograms(apiPrograms.filter((program) => machineIdSet.has(program.machineId)));
       if (machineRows.length === 0) {
         setError('利用可能なマシンがありません。先にマシン登録を完了してください。');
       }

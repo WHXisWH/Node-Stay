@@ -756,7 +756,7 @@ export default function MerchantComputePage() {
                   ? '先に加盟店ダッシュボードで店舗を作成してください。'
                   : '先にマシン登録を完了してください。登録後、この画面で稼働曜日・価格を保存できます。'}
               </p>
-              <Link href={venues.length === 0 ? '/merchant/dashboard' : '/merchant/machines/register'} className="btn-primary">
+              <Link href={venues.length === 0 ? '/merchant/dashboard' : '/merchant/machines/register?returnTo=compute'} className="btn-primary">
                 {venues.length === 0 ? '加盟店ダッシュボードへ' : 'マシン登録へ進む'}
               </Link>
             </div>

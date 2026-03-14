@@ -256,6 +256,7 @@ function ProductCard({
 export default function MerchantUsageProductsPage() {
   const {
     products,
+    loadError,
     editingProduct,
     formData, setFormData,
     showForm, openCreate, openEdit, closeForm,
@@ -296,6 +297,11 @@ export default function MerchantUsageProductsPage() {
 
       {/* メインコンテンツ */}
       <div className="container-main py-8">
+        {loadError && (
+          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+            <p className="text-sm font-semibold text-red-700">{loadError}</p>
+          </div>
+        )}
 
         {/* 統計サマリー */}
         <div className="grid grid-cols-3 gap-4 mb-8">

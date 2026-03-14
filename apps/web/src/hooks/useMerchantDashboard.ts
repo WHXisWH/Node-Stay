@@ -71,12 +71,16 @@ export function useMerchantDashboard(): UseMerchantDashboardReturn {
     setLoading(true);
     try {
       const client = createNodeStayClient();
-
-      // 認証中の商家が所有する店舗を優先し、取得不可時のみ公開店舗一覧へフォールバックする
-      const merchantVenues = await client.listMyMerchantVenues().catch(() => []);
-      const venues = merchantVenues.length > 0 ? merchantVenues : await client.listVenues();
-      const venue = venues[0];
-      if (!venue) return;
+      // 加盟店向け画面では公開店舗へフォールバックしない。
+      // フォールバックすると他店舗（例: Seed データの渋谷店）を誤選択する。
+      const merchantVenues = await client.listMyMerchantVenues();
+      const venue = merchantVenues[0];
+      if (!venue) {
+        setVenueId('');
+        setVenueName('');
+        setMachines([]);
+        return;
+      }
 
       setVenueId(venue.venueId);
       setVenueName(venue.name);
@@ -96,7 +100,10 @@ export function useMerchantDashboard(): UseMerchantDashboardReturn {
         })),
       );
     } catch {
-      // エラー時はデフォルト値を維持（例外を上位に伝播させない）
+      // エラー時に前回値を残さない。誤店舗表示の抑止を優先する。
+      setVenueId('');
+      setVenueName('');
+      setMachines([]);
     } finally {
       setLoading(false);
     }

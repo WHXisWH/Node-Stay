@@ -48,6 +48,7 @@ const EMPTY_FORM: ProductFormData = {
 export interface UseMerchantUsageProductsReturn {
   products: UsageProduct[];
   loading: boolean;
+  loadError: string | null;
   editingProduct: UsageProduct | null;
   formData: ProductFormData;
   setFormData: (d: ProductFormData) => void;
@@ -65,6 +66,7 @@ export interface UseMerchantUsageProductsReturn {
 export function useMerchantUsageProducts(): UseMerchantUsageProductsReturn {
   const [products, setProducts] = useState<UsageProduct[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [currentVenueId, setCurrentVenueId] = useState<string>('');
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState<UsageProduct | null>(null);
@@ -75,14 +77,15 @@ export function useMerchantUsageProducts(): UseMerchantUsageProductsReturn {
 
   const loadProducts = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const client = createNodeStayClient();
-      const merchantVenues = await client.listMyMerchantVenues().catch(() => []);
-      const venues = merchantVenues.length > 0 ? merchantVenues : await client.listVenues();
-      const venue = venues[0];
+      const merchantVenues = await client.listMyMerchantVenues();
+      const venue = merchantVenues[0];
       if (!venue) {
         setProducts([]);
         setCurrentVenueId('');
+        setLoadError('加盟店店舗が見つかりません。先に加盟店ダッシュボードで店舗を作成してください。');
         return;
       }
 
@@ -106,6 +109,8 @@ export function useMerchantUsageProducts(): UseMerchantUsageProductsReturn {
       );
     } catch {
       setProducts([]);
+      setCurrentVenueId('');
+      setLoadError('利用権商品の取得に失敗しました。ログイン状態と権限を確認してください。');
     } finally {
       setLoading(false);
     }
@@ -163,13 +168,12 @@ export function useMerchantUsageProducts(): UseMerchantUsageProductsReturn {
       const client = createNodeStayClient();
       let venueId = currentVenueId;
       if (!venueId) {
-        const merchantVenues = await client.listMyMerchantVenues().catch(() => []);
-        const venues = merchantVenues.length > 0 ? merchantVenues : await client.listVenues();
-        venueId = venues[0]?.venueId ?? '';
+        const merchantVenues = await client.listMyMerchantVenues();
+        venueId = merchantVenues[0]?.venueId ?? '';
         if (venueId) setCurrentVenueId(venueId);
       }
       if (!venueId) {
-        throw new Error('会場情報が見つかりません');
+        throw new Error('加盟店店舗が見つかりません');
       }
 
       await client.upsertUsageProduct(venueId, {
@@ -199,6 +203,7 @@ export function useMerchantUsageProducts(): UseMerchantUsageProductsReturn {
   return {
     products,
     loading,
+    loadError,
     editingProduct,
     formData,
     setFormData,
