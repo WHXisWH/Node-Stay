@@ -18,6 +18,7 @@ import { Public } from '../decorators/public.decorator';
 const ClaimBody = z.object({
   revenueRightId: z.string().min(1, '収益権IDは必須です'),
   allocationId:   z.string().min(1, 'アロケーションIDは必須です'),
+  walletAddress: z.string().regex(/^0x[0-9a-fA-F]{40}$/, 'walletAddressの形式が不正です').optional(),
   onchainTxHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/).optional(),
 });
 
@@ -51,12 +52,20 @@ const MarketListingBody = z.object({
   priceJpyc: z.string().regex(/^\d+$/, 'priceJpycは正の整数文字列で指定してください'),
   expiryAt: z.string().datetime().optional(),
   onchainTxHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/, 'onchainTxHashの形式が不正です'),
+  walletAddress: z.string().regex(/^0x[0-9a-fA-F]{40}$/, 'walletAddressの形式が不正です').optional(),
 });
 
-const CancelMarketListingBody = z.object({});
+const CancelMarketListingBody = z.object({
+  walletAddress: z.string().regex(/^0x[0-9a-fA-F]{40}$/, 'walletAddressの形式が不正です').optional(),
+});
 
 const BuyMarketListingBody = z.object({
   onchainPaymentTxHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/, 'onchainPaymentTxHashの形式が不正です'),
+  walletAddress: z.string().regex(/^0x[0-9a-fA-F]{40}$/, 'walletAddressの形式が不正です').optional(),
+});
+
+const SettleMarketListingBody = z.object({
+  walletAddress: z.string().regex(/^0x[0-9a-fA-F]{40}$/, 'walletAddressの形式が不正です').optional(),
 });
 
 @Controller('/v1/revenue')
@@ -198,7 +207,8 @@ export class RevenueController {
       );
     }
     return this.revenue.createMarketListing({
-      walletAddress: user.address,
+      actorWalletAddress: user.address,
+      onchainWalletAddress: parsed.data.walletAddress,
       revenueRightId: parsed.data.revenueRightId,
       priceJpyc: parsed.data.priceJpyc,
       expiryAt,
@@ -221,7 +231,8 @@ export class RevenueController {
     }
     return this.revenue.cancelMarketListing({
       listingId,
-      walletAddress: user.address,
+      actorWalletAddress: user.address,
+      onchainWalletAddress: parsed.data.walletAddress,
     });
   }
 
@@ -240,7 +251,8 @@ export class RevenueController {
     }
     return this.revenue.buyMarketListing({
       listingId,
-      walletAddress: user.address,
+      actorWalletAddress: user.address,
+      onchainWalletAddress: parsed.data.walletAddress,
       onchainPaymentTxHash: parsed.data.onchainPaymentTxHash,
     });
   }
@@ -249,10 +261,19 @@ export class RevenueController {
   async settleMarketListing(
     @CurrentUser() user: AuthenticatedUser,
     @Param('listingId') listingId: string,
+    @Body() body: unknown,
   ) {
+    const parsed = SettleMarketListingBody.safeParse(body ?? {});
+    if (!parsed.success) {
+      throw new HttpException(
+        { message: '入力が不正です', errors: parsed.error.flatten().fieldErrors },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
     return this.revenue.settlePendingMarketListing({
       listingId,
-      walletAddress: user.address,
+      actorWalletAddress: user.address,
+      onchainWalletAddress: parsed.data.walletAddress,
     });
   }
 
@@ -269,7 +290,11 @@ export class RevenueController {
     return this.revenue.claimRevenue(
       parsed.data.revenueRightId,
       parsed.data.allocationId,
-      { walletAddress: user.address, onchainTxHash: parsed.data.onchainTxHash },
+      {
+        walletAddress: user.address,
+        onchainWalletAddress: parsed.data.walletAddress,
+        onchainTxHash: parsed.data.onchainTxHash,
+      },
     );
   }
 

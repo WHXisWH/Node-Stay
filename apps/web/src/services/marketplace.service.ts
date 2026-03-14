@@ -25,6 +25,7 @@ class MarketplaceServiceClass {
   async createListing(params: {
     usageRightId: string;
     sellerUserId: string;
+    sellerWallet?: string;
     priceJpyc: string;
     expiryAt?: string;
     onchainTxHash: string;
@@ -34,6 +35,7 @@ class MarketplaceServiceClass {
       {
         usageRightId: params.usageRightId,
         sellerUserId: params.sellerUserId,
+        sellerWallet: params.sellerWallet,
         priceJpyc: params.priceJpyc,
         expiryAt: params.expiryAt,
         onchainTxHash: params.onchainTxHash,
@@ -46,6 +48,7 @@ class MarketplaceServiceClass {
     listingId: string,
     userId: string,
     onchainTxHash: string,
+    sellerWallet?: string,
     idempotencyKey?: string,
   ): Promise<void> {
     await this.client.cancelMarketplaceListing(
@@ -53,6 +56,7 @@ class MarketplaceServiceClass {
       userId,
       onchainTxHash,
       idempotencyKey ?? makeIdempotencyKey(`cancel-${listingId}`),
+      sellerWallet,
     );
   }
 

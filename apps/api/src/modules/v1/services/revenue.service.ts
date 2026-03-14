@@ -783,14 +783,18 @@ export class RevenueService {
   }
 
   async createMarketListing(input: {
-    walletAddress: string;
+    actorWalletAddress: string;
+    onchainWalletAddress?: string;
     revenueRightId: string;
     priceJpyc: string;
     expiryAt?: Date;
     onchainTxHash: string;
   }) {
-    const sellerWallet = this.requireWalletAddress(input.walletAddress, '出品者');
-    const sellerUserId = await this.resolveOrCreateUserIdByWallet(sellerWallet);
+    const actorWallet = this.requireWalletAddress(input.actorWalletAddress, '認証ユーザー');
+    const sellerWallet = input.onchainWalletAddress?.trim()
+      ? this.requireWalletAddress(input.onchainWalletAddress, '出品者')
+      : actorWallet;
+    const sellerUserId = await this.resolveOrCreateUserIdByWallet(actorWallet);
     const priceJpyc = this.requirePositiveIntegerString(input.priceJpyc, '価格');
     const escrowWallet = this.getRevenueEscrowWalletOrThrow();
 
@@ -902,10 +906,14 @@ export class RevenueService {
 
   async cancelMarketListing(input: {
     listingId: string;
-    walletAddress: string;
+    actorWalletAddress: string;
+    onchainWalletAddress?: string;
   }) {
-    const sellerWallet = this.requireWalletAddress(input.walletAddress, '出品者');
-    const sellerUserId = await this.resolveOrCreateUserIdByWallet(sellerWallet);
+    const actorWallet = this.requireWalletAddress(input.actorWalletAddress, '認証ユーザー');
+    const sellerWallet = input.onchainWalletAddress?.trim()
+      ? this.requireWalletAddress(input.onchainWalletAddress, '出品者')
+      : actorWallet;
+    const sellerUserId = await this.resolveOrCreateUserIdByWallet(actorWallet);
 
     const listing = await this.prisma.marketplaceListing.findUnique({
       where: { id: input.listingId },
@@ -1010,11 +1018,15 @@ export class RevenueService {
 
   async buyMarketListing(input: {
     listingId: string;
-    walletAddress: string;
+    actorWalletAddress: string;
+    onchainWalletAddress?: string;
     onchainPaymentTxHash: string;
   }) {
-    const buyerWallet = this.requireWalletAddress(input.walletAddress, '購入者');
-    const buyerUserId = await this.resolveOrCreateUserIdByWallet(buyerWallet);
+    const actorWallet = this.requireWalletAddress(input.actorWalletAddress, '認証ユーザー');
+    const buyerWallet = input.onchainWalletAddress?.trim()
+      ? this.requireWalletAddress(input.onchainWalletAddress, '購入者')
+      : actorWallet;
+    const buyerUserId = await this.resolveOrCreateUserIdByWallet(actorWallet);
 
     const listing = await this.prisma.marketplaceListing.findUnique({
       where: { id: input.listingId },
@@ -1148,9 +1160,16 @@ export class RevenueService {
     };
   }
 
-  async settlePendingMarketListing(input: { listingId: string; walletAddress: string }) {
-    const buyerWallet = this.requireWalletAddress(input.walletAddress, '購入者');
-    const buyerUserId = await this.resolveOrCreateUserIdByWallet(buyerWallet);
+  async settlePendingMarketListing(input: {
+    listingId: string;
+    actorWalletAddress: string;
+    onchainWalletAddress?: string;
+  }) {
+    const actorWallet = this.requireWalletAddress(input.actorWalletAddress, '認証ユーザー');
+    const buyerWallet = input.onchainWalletAddress?.trim()
+      ? this.requireWalletAddress(input.onchainWalletAddress, '購入者')
+      : actorWallet;
+    const buyerUserId = await this.resolveOrCreateUserIdByWallet(actorWallet);
 
     const listing = await this.prisma.marketplaceListing.findUnique({
       where: { id: input.listingId },
@@ -1248,7 +1267,7 @@ export class RevenueService {
   async claimRevenue(
     revenueRightId: string,
     allocationId: string,
-    input: { userId?: string; walletAddress?: string; onchainTxHash?: string },
+    input: { userId?: string; walletAddress?: string; onchainWalletAddress?: string; onchainTxHash?: string },
   ) {
     const userId = await this.resolveUserId(input);
     if (!userId) {
@@ -1313,7 +1332,9 @@ export class RevenueService {
       );
     }
 
-    const holderWallet = await this.getUserWalletAddress(userId, '収益権保有者');
+    const holderWallet = input.onchainWalletAddress?.trim()
+      ? this.requireWalletAddress(input.onchainWalletAddress, '収益権保有者')
+      : await this.getUserWalletAddress(userId, '収益権保有者');
     const expectedProgramId = revenueRight.onchainTokenId ?? null;
     if (this.flags.strictOnchainModeEnabled() && !expectedProgramId) {
       throw new HttpException(

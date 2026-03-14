@@ -14,6 +14,7 @@ import { useUserStore } from '../stores/user.store';
 import { useAaTransaction } from './useAaTransaction';
 import { encodeRevenueClaim } from '../services/aa/encodeMarketplaceCalls';
 import { resolveTxMode } from './txMode';
+import { useUserState } from './useUserState';
 
 // ---------------------------------------------------------------------------
 // Revenue Right コントラクト設定
@@ -142,7 +143,7 @@ interface ClaimTarget {
 }
 
 export function useRevenueDashboard(): UseRevenueDashboardReturn {
-  const walletAddress = useUserStore((s) => s.walletAddress);
+  const { walletAddress: authWalletAddress, onchainWalletAddress } = useUserState();
   const loginMethod = useUserStore((s) => s.loginMethod);
   const { isConnected } = useAccount();
   const mode = resolveTxMode(loginMethod, isConnected);
@@ -160,7 +161,7 @@ export function useRevenueDashboard(): UseRevenueDashboardReturn {
   const [claimTargets, setClaimTargets] = useState<Record<string, ClaimTarget>>({});
 
   const loadDashboard = useCallback(async () => {
-    if (!walletAddress) {
+    if (!authWalletAddress) {
       setRights([]);
       setAllocations([]);
       setClaimTargets({});
@@ -173,8 +174,8 @@ export function useRevenueDashboard(): UseRevenueDashboardReturn {
       const client = createNodeStayClient();
 
       const [apiRights, apiClaims] = await Promise.all([
-        client.listMyRevenueRights({ walletAddress }),
-        client.listRevenueClaims({ walletAddress }),
+        client.listMyRevenueRights({ walletAddress: authWalletAddress }),
+        client.listRevenueClaims({ walletAddress: authWalletAddress }),
       ]);
 
       const programIds = [...new Set(apiRights.map((r) => r.revenueProgramId))];
@@ -322,7 +323,7 @@ export function useRevenueDashboard(): UseRevenueDashboardReturn {
     } finally {
       setLoading(false);
     }
-  }, [walletAddress]);
+  }, [authWalletAddress]);
 
   useEffect(() => {
     void loadDashboard();
@@ -339,7 +340,7 @@ export function useRevenueDashboard(): UseRevenueDashboardReturn {
   );
 
   const handleClaim = useCallback(async (allocationId: string) => {
-    if (!walletAddress) return;
+    if (!authWalletAddress) return;
 
     const target = claimTargets[allocationId];
     if (!target) return;
@@ -390,7 +391,7 @@ export function useRevenueDashboard(): UseRevenueDashboardReturn {
       await client.claimRevenue({
         revenueRightId: target.revenueRightId,
         allocationId: target.allocationId,
-        walletAddress,
+        walletAddress: onchainWalletAddress ?? undefined,
         onchainTxHash: txHash,
       });
 
@@ -408,7 +409,7 @@ export function useRevenueDashboard(): UseRevenueDashboardReturn {
     } finally {
       setClaimingId(null);
     }
-  }, [walletAddress, claimTargets, isAaMode, sendUserOp, aaError, writeContractAsync, loadDashboard, config]);
+  }, [authWalletAddress, onchainWalletAddress, claimTargets, isAaMode, sendUserOp, aaError, writeContractAsync, loadDashboard, config]);
 
   return {
     rights,

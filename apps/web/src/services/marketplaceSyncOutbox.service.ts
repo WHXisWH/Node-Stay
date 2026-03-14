@@ -29,6 +29,7 @@ type BuyListingTask = BaseTask<'BUY_LISTING', {
 type CreateListingTask = BaseTask<'CREATE_LISTING', {
   usageRightId: string;
   sellerUserId: string;
+  sellerWallet?: string;
   priceJpyc: string;
   expiryAt?: string;
   onchainTxHash: string;
@@ -38,6 +39,7 @@ type CreateListingTask = BaseTask<'CREATE_LISTING', {
 type CancelListingTask = BaseTask<'CANCEL_LISTING', {
   listingId: string;
   userId: string;
+  sellerWallet?: string;
   onchainTxHash: string;
   idempotencyKey: string;
 }>;
@@ -167,6 +169,7 @@ class MarketplaceSyncOutboxServiceClass {
           task.payload.listingId,
           task.payload.userId,
           task.payload.onchainTxHash,
+          task.payload.sellerWallet,
           ensureIdempotencyKey(task.payload.idempotencyKey, `cancel-${task.id}`),
         );
       }

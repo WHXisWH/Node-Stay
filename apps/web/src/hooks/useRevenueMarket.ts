@@ -15,6 +15,7 @@ import { createNodeStayClient } from '../services/nodestay';
 import { useUserStore } from '../stores/user.store';
 import { useAaTransaction } from './useAaTransaction';
 import { resolveTxMode } from './txMode';
+import { useUserState } from './useUserState';
 import {
   encodeJpycTransfer,
   encodeRevenueSafeTransferFrom,
@@ -130,7 +131,7 @@ function isConnectorNotConnectedError(error: unknown): boolean {
 }
 
 export function useRevenueMarket(params: UseRevenueMarketParams): UseRevenueMarketReturn {
-  const walletAddress = useUserStore((s) => s.walletAddress);
+  const { walletAddress: authWalletAddress, onchainWalletAddress } = useUserState();
   const loginMethod = useUserStore((s) => s.loginMethod);
   const { address: connectedAddress, isConnected } = useAccount();
   const mode = resolveTxMode(loginMethod, isConnected);
@@ -166,7 +167,7 @@ export function useRevenueMarket(params: UseRevenueMarketParams): UseRevenueMark
       const [marketConfig, marketRows, myRows] = await Promise.all([
         client.getRevenueMarketConfig(),
         client.listRevenueMarketListings(),
-        walletAddress ? client.listMyRevenueMarketListings() : Promise.resolve([]),
+        authWalletAddress ? client.listMyRevenueMarketListings() : Promise.resolve([]),
       ]);
 
       const nextConfig: RevenueMarketConfig = {
@@ -185,7 +186,7 @@ export function useRevenueMarket(params: UseRevenueMarketParams): UseRevenueMark
     } finally {
       setLoading(false);
     }
-  }, [client, walletAddress]);
+  }, [client, authWalletAddress]);
 
   useEffect(() => {
     void loadListings();
@@ -197,7 +198,7 @@ export function useRevenueMarket(params: UseRevenueMarketParams): UseRevenueMark
     onchainProgramId: string;
     amount1155: string;
   }): Promise<`0x${string}`> => {
-    const sender = (walletAddress ?? connectedAddress) as `0x${string}` | null;
+    const sender = (onchainWalletAddress ?? connectedAddress) as `0x${string}` | null;
     if (!sender) {
       throw new Error('ウォレット情報が見つかりません。再ログインしてください。');
     }
@@ -242,7 +243,7 @@ export function useRevenueMarket(params: UseRevenueMarketParams): UseRevenueMark
       }
       throw e;
     }
-  }, [aaError, configWagmi, connectedAddress, loginMethod, mode, sendUserOp, walletAddress, writeContractAsync]);
+  }, [aaError, configWagmi, connectedAddress, loginMethod, mode, onchainWalletAddress, sendUserOp, writeContractAsync]);
 
   const sendJpycPayment = useCallback(async (input: {
     jpycTokenAddress: `0x${string}`;
@@ -296,8 +297,11 @@ export function useRevenueMarket(params: UseRevenueMarketParams): UseRevenueMark
     setSuccess(null);
 
     try {
-      if (!walletAddress) {
+      if (!authWalletAddress) {
         throw new Error('ログイン中のウォレットが見つかりません。');
+      }
+      if (!onchainWalletAddress) {
+        throw new Error('オンチェーン実行ウォレットが見つかりません。再ログインしてください。');
       }
       if (!config?.chainEnabled || !config.revenueRightAddress || !config.escrowWallet) {
         throw new Error('収益権市場のオンチェーン設定が未完了です。管理者に連絡してください。');
@@ -331,6 +335,7 @@ export function useRevenueMarket(params: UseRevenueMarketParams): UseRevenueMark
         priceJpyc: input.priceJpyc,
         expiryAt: input.expiryAtIso,
         onchainTxHash: transferTxHash,
+        walletAddress: onchainWalletAddress,
       });
 
       setSuccess({
@@ -343,7 +348,7 @@ export function useRevenueMarket(params: UseRevenueMarketParams): UseRevenueMark
     } finally {
       setActionPending(false);
     }
-  }, [client, config, loadListings, params, sendRevenueTransferToEscrow, walletAddress]);
+  }, [client, config, loadListings, params, sendRevenueTransferToEscrow, authWalletAddress, onchainWalletAddress]);
 
   const cancelListing = useCallback(async (listingId: string) => {
     setActionPending(true);
@@ -351,7 +356,9 @@ export function useRevenueMarket(params: UseRevenueMarketParams): UseRevenueMark
     setSuccess(null);
 
     try {
-      const res = await client.cancelRevenueMarketListing(listingId);
+      const res = await client.cancelRevenueMarketListing(listingId, {
+        walletAddress: onchainWalletAddress ?? undefined,
+      });
       setSuccess({
         message: '出品を取り下げました。',
         txHashes: [res.transferTxHash],
@@ -362,7 +369,7 @@ export function useRevenueMarket(params: UseRevenueMarketParams): UseRevenueMark
     } finally {
       setActionPending(false);
     }
-  }, [client, loadListings, params]);
+  }, [client, loadListings, params, onchainWalletAddress]);
 
   const buyListing = useCallback(async (listingId: string) => {
     setActionPending(true);
@@ -389,6 +396,7 @@ export function useRevenueMarket(params: UseRevenueMarketParams): UseRevenueMark
 
       const result = await client.buyRevenueMarketListing(listingId, {
         onchainPaymentTxHash: paymentTxHash,
+        walletAddress: onchainWalletAddress ?? undefined,
       });
 
       setSuccess({
@@ -401,7 +409,7 @@ export function useRevenueMarket(params: UseRevenueMarketParams): UseRevenueMark
     } finally {
       setActionPending(false);
     }
-  }, [client, config, loadListings, params, publicListings, sendJpycPayment]);
+  }, [client, config, loadListings, params, publicListings, sendJpycPayment, onchainWalletAddress]);
 
   const settleListing = useCallback(async (listingId: string) => {
     setActionPending(true);
@@ -409,7 +417,9 @@ export function useRevenueMarket(params: UseRevenueMarketParams): UseRevenueMark
     setSuccess(null);
 
     try {
-      const result = await client.settleRevenueMarketListing(listingId);
+      const result = await client.settleRevenueMarketListing(listingId, {
+        walletAddress: onchainWalletAddress ?? undefined,
+      });
       setSuccess({
         message: '受渡再実行が完了しました。',
         txHashes: [result.transferTxHash].filter((v): v is string => !!v),
@@ -420,7 +430,7 @@ export function useRevenueMarket(params: UseRevenueMarketParams): UseRevenueMark
     } finally {
       setActionPending(false);
     }
-  }, [client, loadListings, params]);
+  }, [client, loadListings, params, onchainWalletAddress]);
 
   return {
     config,

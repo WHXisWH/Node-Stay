@@ -11,6 +11,7 @@ import { usePassStore } from '../stores/pass.store';
 import { UsageRightService } from '../services/usageRight.service';
 import { MarketplaceService } from '../services/marketplace.service';
 import { useMarketplaceWrite } from './useMarketplaceWrite';
+import { useUserState } from './useUserState';
 import type { UsageRight, UsageRightStatus } from '../models/pass.model';
 
 export type { UsageRight, UsageRightStatus };
@@ -77,6 +78,7 @@ function parseUsageListingError(error: unknown, action: 'list' | 'cancel'): stri
 
 export function usePassesPage(): UsePassesPageReturn {
   const walletAddress = useUserStore((s) => s.walletAddress);
+  const { onchainWalletAddress } = useUserState();
   const { usageRights, usageRightsLoading, usageRightsError } = usePassStore();
   const {
     listUsageRight,
@@ -139,6 +141,7 @@ export function usePassesPage(): UsePassesPageReturn {
       await MarketplaceService.createListing({
         usageRightId: listingRight.usageRightId,
         sellerUserId: walletAddress,
+        sellerWallet: onchainWalletAddress ?? undefined,
         priceJpyc: price,
         onchainTxHash: txHash,
         idempotencyKey: crypto.randomUUID(),
@@ -155,7 +158,7 @@ export function usePassesPage(): UsePassesPageReturn {
       // オンチェーン成功後の API 不整合を調査できるように記録する。
       console.error('createListing API failed', e);
     }
-  }, [listingRight, listPriceMinor, walletAddress, listUsageRight, loadUsageRights, chainWriteError]);
+  }, [listingRight, listPriceMinor, walletAddress, onchainWalletAddress, listUsageRight, loadUsageRights, chainWriteError]);
 
   const handleConfirmCancelListing = useCallback(async () => {
     if (!walletAddress) {
@@ -178,6 +181,7 @@ export function usePassesPage(): UsePassesPageReturn {
         cancelListingRight.listingId,
         walletAddress,
         txHash,
+        onchainWalletAddress ?? undefined,
       );
       setCancelListingRight(null);
       setLatestTxHash(txHash);
@@ -188,7 +192,7 @@ export function usePassesPage(): UsePassesPageReturn {
     } finally {
       setCancelListingPending(false);
     }
-  }, [cancelListingRight, walletAddress, chainCancelListing, loadUsageRights, chainWriteError]);
+  }, [cancelListingRight, walletAddress, onchainWalletAddress, chainCancelListing, loadUsageRights, chainWriteError]);
 
   const filtered = useMemo(() => {
     return usageRights.filter((r) => {

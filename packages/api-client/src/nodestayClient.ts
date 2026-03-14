@@ -649,6 +649,7 @@ export class NodeStayClient {
     input: {
       usageRightId: string;
       sellerUserId?: string;
+      sellerWallet?: string;
       priceJpyc: string;
       expiryAt?: string;
       onchainTxHash: string;
@@ -681,6 +682,7 @@ export class NodeStayClient {
     userId: string,
     onchainTxHash: string,
     idempotencyKey: string,
+    sellerWallet?: string,
   ): Promise<{
     id: string;
     status: string;
@@ -692,7 +694,7 @@ export class NodeStayClient {
         'content-type': 'application/json',
         'idempotency-key': normalizeIdempotencyKey(idempotencyKey),
       },
-      body: JSON.stringify({ userId, onchainTxHash }),
+      body: JSON.stringify({ userId, sellerWallet, onchainTxHash }),
     });
   }
 
@@ -882,6 +884,7 @@ export class NodeStayClient {
     priceJpyc: string;
     expiryAt?: string;
     onchainTxHash: string;
+    walletAddress?: string;
   }): Promise<{
     id: string;
     status: string;
@@ -896,7 +899,7 @@ export class NodeStayClient {
 
   async cancelRevenueMarketListing(
     listingId: string,
-    input?: Record<string, never>,
+    input?: { walletAddress?: string },
   ): Promise<{
     id: string;
     status: string;
@@ -911,7 +914,7 @@ export class NodeStayClient {
 
   async buyRevenueMarketListing(
     listingId: string,
-    input: { onchainPaymentTxHash: string },
+    input: { onchainPaymentTxHash: string; walletAddress?: string },
   ): Promise<{
     id: string;
     status: string;
@@ -929,6 +932,7 @@ export class NodeStayClient {
 
   async settleRevenueMarketListing(
     listingId: string,
+    input?: { walletAddress?: string },
   ): Promise<{
     id: string;
     status: string;
@@ -939,7 +943,7 @@ export class NodeStayClient {
     return await this.json(`/v1/revenue/market/listings/${encodeURIComponent(listingId)}/settle`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({}),
+      body: JSON.stringify(input ?? {}),
     });
   }
 

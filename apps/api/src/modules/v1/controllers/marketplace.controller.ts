@@ -7,10 +7,12 @@ import { CurrentUser, type AuthenticatedUser } from '../decorators/current-user.
 import { Public } from '../decorators/public.decorator';
 
 const TxHash = z.string().regex(/^0x[0-9a-fA-F]{64}$/);
+const WalletAddress = z.string().regex(/^0x[0-9a-fA-F]{40}$/);
 
 const CreateListingBody = z.object({
   usageRightId: z.string().min(1),
   sellerUserId: z.string().optional(),
+  sellerWallet: WalletAddress.optional(),
   priceJpyc: z.string().min(1),
   expiryAt: z.string().datetime().optional(),
   onchainTxHash: TxHash,
@@ -18,6 +20,7 @@ const CreateListingBody = z.object({
 
 const CancelListingBody = z.object({
   userId: z.string().optional(),
+  sellerWallet: WalletAddress.optional(),
   onchainTxHash: TxHash,
 });
 
@@ -95,6 +98,7 @@ export class MarketplaceController {
     const result = await this.listing.createListing({
       usageRightId: parsed.data.usageRightId,
       sellerUserId: user.address,
+      sellerWallet: parsed.data.sellerWallet,
       priceJpyc: parsed.data.priceJpyc,
       expiryAt: parsed.data.expiryAt ? new Date(parsed.data.expiryAt) : undefined,
       onchainTxHash: parsed.data.onchainTxHash,
@@ -140,6 +144,7 @@ export class MarketplaceController {
     }
 
     const result = await this.listing.cancelListing(id, user.address, {
+      sellerWallet: parsed.data.sellerWallet,
       onchainTxHash: parsed.data.onchainTxHash,
     });
     await this.idempotency.save(key, requestHash, result);

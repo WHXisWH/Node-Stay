@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRevenueDashboard } from '../../hooks/useRevenueDashboard';
 import { useRevenueMarket, type RevenueMarketListing } from '../../hooks/useRevenueMarket';
 import type { RevenueRight, Allocation } from '../../hooks/useRevenueDashboard';
-import { useUserStore } from '../../stores/user.store';
+import { useUserState } from '../../hooks/useUserState';
 
 /** JPYC minor（1/100 単位）を "1,234.56" 形式に変換 */
 function formatJpyc(minor: number): string {
@@ -254,7 +254,7 @@ export default function RevenueDashboardPage() {
     refresh,
   } = useRevenueDashboard();
 
-  const myWalletAddress = useUserStore((s) => s.walletAddress);
+  const { onchainWalletAddress } = useUserState();
   const market = useRevenueMarket({ rights, refreshDashboard: refresh });
 
   const [newListingRightId, setNewListingRightId] = useState('');
@@ -477,7 +477,7 @@ export default function RevenueDashboardPage() {
                 <MarketListingCard
                   key={listing.id}
                   listing={listing}
-                  myWalletAddress={myWalletAddress}
+                  myWalletAddress={onchainWalletAddress}
                   pending={market.actionPending}
                   onBuy={(listingId) => void market.buyListing(listingId)}
                 />
@@ -506,15 +506,15 @@ export default function RevenueDashboardPage() {
                   {myRows.map((row) => {
                     const canCancel =
                       row.status === 'ACTIVE' &&
-                      !!myWalletAddress &&
+                      !!onchainWalletAddress &&
                       !!row.sellerWalletAddress &&
-                      myWalletAddress.toLowerCase() === row.sellerWalletAddress.toLowerCase();
+                      onchainWalletAddress.toLowerCase() === row.sellerWalletAddress.toLowerCase();
 
                     const canSettle =
                       row.status === 'SETTLING' &&
-                      !!myWalletAddress &&
+                      !!onchainWalletAddress &&
                       !!row.buyerWalletAddress &&
-                      myWalletAddress.toLowerCase() === row.buyerWalletAddress.toLowerCase();
+                      onchainWalletAddress.toLowerCase() === row.buyerWalletAddress.toLowerCase();
 
                     return (
                       <tr key={row.id} className="border-t border-slate-100 text-sm">

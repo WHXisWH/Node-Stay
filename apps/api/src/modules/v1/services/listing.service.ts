@@ -226,12 +226,15 @@ export class ListingService {
   async createListing(input: {
     usageRightId: string;
     sellerUserId: string;
+    sellerWallet?: string;
     priceJpyc: string;
     expiryAt?: Date;
     onchainTxHash: string;
   }) {
     const sellerUserId = await this.resolveExistingUserId(input.sellerUserId);
-    const sellerWallet = await this.resolveWalletAddressByUserId(sellerUserId, '出品者');
+    const sellerWallet = input.sellerWallet?.trim()
+      ? this.normalizeWalletAddress(input.sellerWallet, '出品者')
+      : await this.resolveWalletAddressByUserId(sellerUserId, '出品者');
     const existingByTx = await this.prisma.usageListing.findFirst({
       where: { onchainTxHash: input.onchainTxHash },
     });
@@ -319,9 +322,15 @@ export class ListingService {
     });
   }
 
-  async cancelListing(listingId: string, userId: string, input: { onchainTxHash: string }) {
+  async cancelListing(
+    listingId: string,
+    userId: string,
+    input: { onchainTxHash: string; sellerWallet?: string },
+  ) {
     const sellerUserId = await this.resolveExistingUserId(userId);
-    const sellerWallet = await this.resolveWalletAddressByUserId(sellerUserId, '出品者');
+    const sellerWallet = input.sellerWallet?.trim()
+      ? this.normalizeWalletAddress(input.sellerWallet, '出品者')
+      : await this.resolveWalletAddressByUserId(sellerUserId, '出品者');
 
     return this.prisma.$transaction(async (tx) => {
       const listing = await tx.usageListing.findUnique({
