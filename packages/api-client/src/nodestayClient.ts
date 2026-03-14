@@ -315,7 +315,7 @@ export class NodeStayClient {
     storageGb?: number;
     localSerial?: string;
     metadataUri?: string;
-  }): Promise<{ id: string; machineId: string; status: string }> {
+  }): Promise<{ id: string; machineId: string; onchainMachineId?: string; status: string }> {
     return await this.json('/v1/machines', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -364,7 +364,7 @@ export class NodeStayClient {
   }
 
   /** PATCH /v1/machines/:id/status — ステータス変更 */
-  async updateMachineStatus(id: string, status: string): Promise<{ id: string; status: string }> {
+  async updateMachineStatus(id: string, status: string): Promise<{ id: string; machineId: string; status: string }> {
     return await this.json(`/v1/machines/${encodeURIComponent(id)}/status`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },

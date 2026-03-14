@@ -12,12 +12,13 @@
 import { useState } from 'react';
 import { useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { waitForTransactionReceipt } from '@wagmi/core';
-import { useConfig } from 'wagmi';
+import { useAccount, useConfig } from 'wagmi';
 import { parseUnits, formatUnits } from 'viem';
 import { CONTRACT_ADDRESSES } from '../services/config';
 import { useUserStore } from '../stores/user.store';
 import { useAaTransaction } from './useAaTransaction';
 import { encodeJpycTransfer } from '../services/aa/encodeMarketplaceCalls';
+import { resolveTxMode } from './txMode';
 
 // ---------------------------------------------------------------------------
 // ERC-20 最小 ABI（balanceOf + approve）
@@ -54,6 +55,11 @@ const ERC20_ABI = [
 ] as const;
 
 const JPYC_ADDRESS = CONTRACT_ADDRESSES.jpycToken as `0x${string}`;
+
+function isConnectorNotConnectedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /connector not connected/i.test(message);
+}
 
 // ---------------------------------------------------------------------------
 // useJPYCBalance
@@ -154,7 +160,9 @@ export interface UseJPYCTransferReturn {
 
 export function useJPYCTransfer(): UseJPYCTransferReturn {
   const loginMethod = useUserStore((s) => s.loginMethod);
-  const isAaMode = loginMethod === 'social';
+  const { isConnected } = useAccount();
+  const mode = resolveTxMode(loginMethod, isConnected);
+  const isAaMode = mode === 'aa';
   const config = useConfig();
   const { writeContractAsync, data: txHash, isPending, error: writeError } = useWriteContract();
   const { sendUserOp, status: aaStatus, error: aaError } = useAaTransaction();
@@ -167,7 +175,7 @@ export function useJPYCTransfer(): UseJPYCTransferReturn {
   const transferJpyc = async (to: `0x${string}`, amountJPYC: string) => {
     setAaTransferred(false);
     const amount = parseUnits(amountJPYC, 18);
-    if (isAaMode) {
+    const sendViaAa = async () => {
       const result = await sendUserOp([
         {
           to: JPYC_ADDRESS,
@@ -180,16 +188,28 @@ export function useJPYCTransfer(): UseJPYCTransferReturn {
       }
       setAaTransferred(true);
       return result.txHash;
+    };
+
+    if (isAaMode) {
+      return await sendViaAa();
     }
 
-    const hash = await writeContractAsync({
-      address: JPYC_ADDRESS,
-      abi: ERC20_ABI,
-      functionName: 'transfer',
-      args: [to, amount],
-    });
-    await waitForTransactionReceipt(config, { hash });
-    return hash;
+    try {
+      const hash = await writeContractAsync({
+        address: JPYC_ADDRESS,
+        abi: ERC20_ABI,
+        functionName: 'transfer',
+        args: [to, amount],
+      });
+      await waitForTransactionReceipt(config, { hash });
+      return hash;
+    } catch (error) {
+      // loginMethod 未復元時の誤ルーティング救済: connector 失敗なら AA にフォールバックする
+      if (loginMethod !== 'wallet' && isConnectorNotConnectedError(error)) {
+        return await sendViaAa();
+      }
+      throw error;
+    }
   };
 
   const transferError = isAaMode ? aaError : (writeError ? writeError.message : null);

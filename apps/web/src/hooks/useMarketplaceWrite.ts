@@ -4,12 +4,13 @@
 // social ログイン時は AA、通常ログイン時は wagmi で送信する
 
 import { useState } from 'react';
-import { useWriteContract } from 'wagmi';
+import { useAccount, useWriteContract } from 'wagmi';
 import { parseUnits } from 'viem';
 
 import { CONTRACT_ADDRESSES } from '../services/config';
 import { useUserStore } from '../stores/user.store';
 import { useAaTransaction } from './useAaTransaction';
+import { resolveTxMode } from './txMode';
 import {
   encodeBuyListing,
   encodeCancelListing,
@@ -47,10 +48,16 @@ const MARKETPLACE_ABI = [
     inputs: [{ name: 'listingId', type: 'uint256' }], outputs: [] },
 ] as const;
 
+function isConnectorNotConnectedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /connector not connected/i.test(message);
+}
+
 export function useMarketplaceWrite() {
   const { writeContractAsync } = useWriteContract();
   const loginMethod = useUserStore((s) => s.loginMethod);
-  const mode = loginMethod === 'social' ? 'aa' : 'wallet';
+  const { isConnected } = useAccount();
+  const mode = resolveTxMode(loginMethod, isConnected);
   const { sendUserOp, error: aaError } = useAaTransaction();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +67,7 @@ export function useMarketplaceWrite() {
     setPending(true);
     setError(null);
     try {
-      if (mode === 'aa') {
+      const sendViaAa = async () => {
         const result = await sendUserOp([
           {
             to: USAGE_RIGHT_ADDRESS,
@@ -78,26 +85,37 @@ export function useMarketplaceWrite() {
           return null;
         }
         return result.txHash;
+      };
+
+      if (mode === 'aa') {
+        return await sendViaAa();
       }
 
-      // 手順1: ERC-721 approve(marketplace, tokenId)
-      await writeContractAsync({
-        address: USAGE_RIGHT_ADDRESS,
-        abi: ERC721_APPROVE_ABI,
-        functionName: 'approve',
-        args: [MARKETPLACE_ADDRESS, BigInt(onchainTokenId)],
-      });
-      // approve トランザクションの確定待機は省略可能（同一ブロック想定）
+      try {
+        // 手順1: ERC-721 approve(marketplace, tokenId)
+        await writeContractAsync({
+          address: USAGE_RIGHT_ADDRESS,
+          abi: ERC721_APPROVE_ABI,
+          functionName: 'approve',
+          args: [MARKETPLACE_ADDRESS, BigInt(onchainTokenId)],
+        });
+        // approve トランザクションの確定待機は省略可能（同一ブロック想定）
 
-      // 手順2: createListing(tokenId, priceJpyc)
-      const priceWei = parseUnits(priceJpycMinor, 0); // minor は整数
-      const listTx = await writeContractAsync({
-        address: MARKETPLACE_ADDRESS,
-        abi: MARKETPLACE_ABI,
-        functionName: 'createListing',
-        args: [BigInt(onchainTokenId), priceWei],
-      });
-      return listTx;
+        // 手順2: createListing(tokenId, priceJpyc)
+        const priceWei = parseUnits(priceJpycMinor, 0); // minor は整数
+        const listTx = await writeContractAsync({
+          address: MARKETPLACE_ADDRESS,
+          abi: MARKETPLACE_ABI,
+          functionName: 'createListing',
+          args: [BigInt(onchainTokenId), priceWei],
+        });
+        return listTx;
+      } catch (walletError) {
+        if (loginMethod !== 'wallet' && isConnectorNotConnectedError(walletError)) {
+          return await sendViaAa();
+        }
+        throw walletError;
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       if (!msg.includes('User rejected')) setError(msg);
@@ -112,7 +130,7 @@ export function useMarketplaceWrite() {
     setPending(true);
     setError(null);
     try {
-      if (mode === 'aa') {
+      const sendViaAa = async () => {
         const result = await sendUserOp([
           {
             to: JPYC_ADDRESS,
@@ -130,24 +148,35 @@ export function useMarketplaceWrite() {
           return null;
         }
         return result.txHash;
+      };
+
+      if (mode === 'aa') {
+        return await sendViaAa();
       }
 
-      // 手順1: JPYC approve(marketplace, price)
-      await writeContractAsync({
-        address: JPYC_ADDRESS,
-        abi: ERC20_APPROVE_ABI,
-        functionName: 'approve',
-        args: [MARKETPLACE_ADDRESS, parseUnits(priceJpycMinor, 0)],
-      });
+      try {
+        // 手順1: JPYC approve(marketplace, price)
+        await writeContractAsync({
+          address: JPYC_ADDRESS,
+          abi: ERC20_APPROVE_ABI,
+          functionName: 'approve',
+          args: [MARKETPLACE_ADDRESS, parseUnits(priceJpycMinor, 0)],
+        });
 
-      // 手順2: buyListing(listingId)
-      const buyTx = await writeContractAsync({
-        address: MARKETPLACE_ADDRESS,
-        abi: MARKETPLACE_ABI,
-        functionName: 'buyListing',
-        args: [BigInt(onchainListingId)],
-      });
-      return buyTx;
+        // 手順2: buyListing(listingId)
+        const buyTx = await writeContractAsync({
+          address: MARKETPLACE_ADDRESS,
+          abi: MARKETPLACE_ABI,
+          functionName: 'buyListing',
+          args: [BigInt(onchainListingId)],
+        });
+        return buyTx;
+      } catch (walletError) {
+        if (loginMethod !== 'wallet' && isConnectorNotConnectedError(walletError)) {
+          return await sendViaAa();
+        }
+        throw walletError;
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       if (!msg.includes('User rejected')) setError(msg);
@@ -162,7 +191,7 @@ export function useMarketplaceWrite() {
     setPending(true);
     setError(null);
     try {
-      if (mode === 'aa') {
+      const sendViaAa = async () => {
         const result = await sendUserOp([
           {
             to: MARKETPLACE_ADDRESS,
@@ -175,15 +204,26 @@ export function useMarketplaceWrite() {
           return null;
         }
         return result.txHash;
+      };
+
+      if (mode === 'aa') {
+        return await sendViaAa();
       }
 
-      const tx = await writeContractAsync({
-        address: MARKETPLACE_ADDRESS,
-        abi: MARKETPLACE_ABI,
-        functionName: 'cancelListing',
-        args: [BigInt(onchainListingId)],
-      });
-      return tx;
+      try {
+        const tx = await writeContractAsync({
+          address: MARKETPLACE_ADDRESS,
+          abi: MARKETPLACE_ABI,
+          functionName: 'cancelListing',
+          args: [BigInt(onchainListingId)],
+        });
+        return tx;
+      } catch (walletError) {
+        if (loginMethod !== 'wallet' && isConnectorNotConnectedError(walletError)) {
+          return await sendViaAa();
+        }
+        throw walletError;
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       if (!msg.includes('User rejected')) setError(msg);

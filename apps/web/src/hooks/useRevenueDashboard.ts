@@ -8,11 +8,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { waitForTransactionReceipt } from '@wagmi/core';
-import { useConfig, useWriteContract } from 'wagmi';
+import { useAccount, useConfig, useWriteContract } from 'wagmi';
 import { createNodeStayClient } from '../services/nodestay';
 import { useUserStore } from '../stores/user.store';
 import { useAaTransaction } from './useAaTransaction';
 import { encodeRevenueClaim } from '../services/aa/encodeMarketplaceCalls';
+import { resolveTxMode } from './txMode';
 
 // ---------------------------------------------------------------------------
 // Revenue Right コントラクト設定
@@ -121,6 +122,11 @@ function formatPeriodLabel(startAt: string, endAt: string): string {
   return `${s} - ${e}`;
 }
 
+function isConnectorNotConnectedError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /connector not connected/i.test(message);
+}
+
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
@@ -136,7 +142,9 @@ interface ClaimTarget {
 export function useRevenueDashboard(): UseRevenueDashboardReturn {
   const walletAddress = useUserStore((s) => s.walletAddress);
   const loginMethod = useUserStore((s) => s.loginMethod);
-  const isAaMode = loginMethod === 'social';
+  const { isConnected } = useAccount();
+  const mode = resolveTxMode(loginMethod, isConnected);
+  const isAaMode = mode === 'aa';
   const config = useConfig();
   const { writeContractAsync } = useWriteContract();
   const { sendUserOp, error: aaError } = useAaTransaction();
@@ -340,7 +348,7 @@ export function useRevenueDashboard(): UseRevenueDashboardReturn {
       if (!REVENUE_RIGHT_ADDRESS || !REVENUE_RIGHT_ADDRESS.startsWith('0x')) return;
 
       let txHash: `0x${string}`;
-      if (isAaMode) {
+      const sendViaAa = async () => {
         const result = await sendUserOp([
           {
             to: REVENUE_RIGHT_ADDRESS,
@@ -351,16 +359,28 @@ export function useRevenueDashboard(): UseRevenueDashboardReturn {
         if (!result?.txHash) {
           throw new Error(aaError ?? 'AA での claim トランザクション送信に失敗しました');
         }
-        txHash = result.txHash;
+        return result.txHash;
+      };
+
+      if (isAaMode) {
+        txHash = await sendViaAa();
       } else {
-        // コントラクトの claim(programId, allocationId) を直接呼び出す（on-chain）
-        txHash = await writeContractAsync({
-          address: REVENUE_RIGHT_ADDRESS,
-          abi: REVENUE_RIGHT_ABI,
-          functionName: 'claim',
-          args: [BigInt(target.onchainProgramId), BigInt(target.onchainAllocationId)],
-        });
-        await waitForTransactionReceipt(config, { hash: txHash });
+        try {
+          // コントラクトの claim(programId, allocationId) を直接呼び出す（on-chain）
+          txHash = await writeContractAsync({
+            address: REVENUE_RIGHT_ADDRESS,
+            abi: REVENUE_RIGHT_ABI,
+            functionName: 'claim',
+            args: [BigInt(target.onchainProgramId), BigInt(target.onchainAllocationId)],
+          });
+          await waitForTransactionReceipt(config, { hash: txHash });
+        } catch (walletError) {
+          if (loginMethod !== 'wallet' && isConnectorNotConnectedError(walletError)) {
+            txHash = await sendViaAa();
+          } else {
+            throw walletError;
+          }
+        }
       }
 
       const client = createNodeStayClient();

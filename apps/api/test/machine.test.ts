@@ -52,7 +52,9 @@ describe('Machine API', () => {
       });
 
     expect(res.status).toBe(201);
+    expect(res.body.id).toBeDefined();
     expect(res.body.machineId).toBeDefined();
+    expect(res.body.machineId).toMatch(/^0x[a-f0-9]{64}$/);
     expect(res.body.onchainMachineId).toMatch(/^0x[a-f0-9]{64}$/);
     expect(res.body.status).toBe('REGISTERED');
   });
@@ -120,7 +122,7 @@ describe('Machine API', () => {
       .post('/v1/machines')
       .set(...authHeader(token))
       .send({ venueId, machineClass: 'STANDARD', localSerial: `STD-${Date.now()}` });
-    const id = reg.body.machineId;
+    const id = reg.body.id;
 
     const res = await request(app.getHttpServer()).get(`/v1/machines/${id}`);
     expect(res.status).toBe(200);
@@ -141,7 +143,7 @@ describe('Machine API', () => {
       .post('/v1/machines')
       .set(...authHeader(token))
       .send({ venueId, machineClass: 'GPU', localSerial: `GPU-NOAUTH-${Date.now()}` });
-    const id = reg.body.machineId;
+    const id = reg.body.id;
 
     const res = await request(app.getHttpServer())
       .patch(`/v1/machines/${id}/status`)
@@ -154,13 +156,15 @@ describe('Machine API', () => {
       .post('/v1/machines')
       .set(...authHeader(token))
       .send({ venueId, machineClass: 'GPU', localSerial: `GPU-PATCH-${Date.now()}` });
-    const id = reg.body.machineId;
+    const id = reg.body.id;
 
     const res = await request(app.getHttpServer())
       .patch(`/v1/machines/${id}/status`)
       .set(...authHeader(token))
       .send({ status: 'ACTIVE' });
     expect(res.status).toBe(200);
+    expect(res.body.id).toBe(id);
+    expect(res.body.machineId).toMatch(/^0x[a-f0-9]{64}$/);
     expect(res.body.status).toBe('ACTIVE');
   });
 
@@ -169,7 +173,7 @@ describe('Machine API', () => {
       .post('/v1/machines')
       .set(...authHeader(token))
       .send({ venueId, machineClass: 'GPU', localSerial: `GPU-BAD-${Date.now()}` });
-    const id = reg.body.machineId;
+    const id = reg.body.id;
 
     const res = await request(app.getHttpServer())
       .patch(`/v1/machines/${id}/status`)
@@ -187,7 +191,7 @@ describe('Machine API', () => {
       .post('/v1/machines')
       .set(...authHeader(token))
       .send({ venueId, machineClass: 'GPU', localSerial: `SLOT-${Date.now()}` });
-    const id = reg.body.machineId;
+    const id = reg.body.id;
 
     const res = await request(app.getHttpServer())
       .get(`/v1/machines/${id}/slots`);
@@ -200,7 +204,7 @@ describe('Machine API', () => {
       .post('/v1/machines')
       .set(...authHeader(token))
       .send({ venueId, machineClass: 'GPU', localSerial: `SLOT2-${Date.now()}` });
-    const id = reg.body.machineId;
+    const id = reg.body.id;
 
     const res = await request(app.getHttpServer())
       .get(`/v1/machines/${id}/slots?from=INVALID_DATE`);

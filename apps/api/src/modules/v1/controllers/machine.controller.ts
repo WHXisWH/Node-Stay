@@ -30,7 +30,13 @@ export class MachineController {
     if (!parsed.success) throw new HttpException({ message: '入力が不正です' }, HttpStatus.BAD_REQUEST);
 
     const m = await this.machine.register(parsed.data);
-    return { machineId: m.id, onchainMachineId: m.machineId, status: m.status };
+    return {
+      id: m.id,
+      machineId: m.machineId,
+      // 既存クライアント互換（将来的に削除予定）
+      onchainMachineId: m.machineId,
+      status: m.status,
+    };
   }
 
   // GET /v1/machines?venueId=xxx&status=ACTIVE（公開）
@@ -57,7 +63,7 @@ export class MachineController {
 
     const m = await this.machine.updateStatus(id, parsed.data.status);
     if (!m) throw new HttpException({ message: 'マシンが見つかりません' }, HttpStatus.NOT_FOUND);
-    return { machineId: m.id, status: m.status };
+    return { id: m.id, machineId: m.machineId, status: m.status };
   }
 
   // GET /v1/machines/:id/slots?from=ISO&to=ISO（公開）

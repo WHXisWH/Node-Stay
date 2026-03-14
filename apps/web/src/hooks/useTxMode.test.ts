@@ -9,6 +9,7 @@ import { useTxMode } from './useTxMode';
 
 // useUserStore のモック
 let mockLoginMethod: string | null = null;
+let mockIsConnected = false;
 vi.mock('../models/stores/user.store', () => ({
   useUserStore: (selector: (s: { loginMethod: string | null }) => unknown) =>
     selector({ loginMethod: mockLoginMethod }),
@@ -16,6 +17,10 @@ vi.mock('../models/stores/user.store', () => ({
 vi.mock('../stores/user.store', () => ({
   useUserStore: (selector: (s: { loginMethod: string | null }) => unknown) =>
     selector({ loginMethod: mockLoginMethod }),
+}));
+
+vi.mock('wagmi', () => ({
+  useAccount: () => ({ isConnected: mockIsConnected }),
 }));
 
 // useAaTransaction のモック
@@ -56,10 +61,18 @@ vi.mock('../services/config', () => ({
 describe('useTxMode', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockIsConnected = false;
   });
 
-  it('loginMethod が null のとき mode は wallet', () => {
+  it('loginMethod が null かつ未接続のとき mode は aa', () => {
     mockLoginMethod = null;
+    const { result } = renderHook(() => useTxMode());
+    expect(result.current.mode).toBe('aa');
+  });
+
+  it('loginMethod が null かつ接続済みのとき mode は wallet', () => {
+    mockLoginMethod = null;
+    mockIsConnected = true;
     const { result } = renderHook(() => useTxMode());
     expect(result.current.mode).toBe('wallet');
   });

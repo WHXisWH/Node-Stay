@@ -5,13 +5,19 @@ import { ethers } from 'ethers';
 
 /**
  * 機器のオンチェーン登録情報をトランザクションレシートから再同期するスクリプト。
- * - machine.onchainTxHash を起点に MachineRegistered イベントを復元
- * - machineId / onchainTokenId / status を整合させる
+ * - txHash から MachineRegistered イベントを復元
+ * - tokenId から machineId を逆引き
+ * - machineId から tokenId を逆引き
+ * 上記を組み合わせて machineId / onchainTokenId / status を整合させる。
  */
 async function main() {
   const rpcUrl = process.env.AMOY_RPC_URL;
   if (!rpcUrl) {
     throw new Error('AMOY_RPC_URL が未設定です');
+  }
+  const machineRegistryAddress = process.env.MACHINE_REGISTRY_ADDRESS?.trim();
+  if (!machineRegistryAddress || !ethers.isAddress(machineRegistryAddress)) {
+    throw new Error('MACHINE_REGISTRY_ADDRESS が未設定、またはアドレス形式が不正です');
   }
 
   const provider = new ethers.JsonRpcProvider(rpcUrl);
@@ -19,10 +25,17 @@ async function main() {
   const iface = new ethers.Interface([
     'event MachineRegistered(bytes32 indexed machineId, address indexed owner, uint256 indexed tokenId)',
   ]);
+  const registry = new ethers.Contract(
+    machineRegistryAddress,
+    [
+      'function getMachineIdByToken(uint256 tokenId) view returns (bytes32)',
+      'function getTokenIdByMachine(bytes32 machineId) view returns (uint256)',
+    ],
+    provider,
+  );
 
   const rows = await prisma.machine.findMany({
-    where: { onchainTxHash: { not: null } },
-    select: { id: true, machineId: true, onchainTxHash: true, onchainTokenId: true },
+    select: { id: true, machineId: true, onchainTxHash: true, onchainTokenId: true, status: true },
     orderBy: { createdAt: 'asc' },
   });
 
@@ -31,34 +44,71 @@ async function main() {
   let failed = 0;
 
   for (const row of rows) {
-    const txHash = row.onchainTxHash?.trim();
-    if (!txHash) {
-      skipped += 1;
-      continue;
-    }
+    const txHash = row.onchainTxHash?.trim() ?? '';
+    let nextMachineId =
+      /^0x[0-9a-fA-F]{64}$/.test(row.machineId ?? '')
+        ? row.machineId
+        : null;
+    let nextTokenId = row.onchainTokenId && /^\d+$/.test(row.onchainTokenId)
+      ? row.onchainTokenId
+      : null;
+    let nextTxHash = txHash || null;
 
     try {
-      const receipt = await provider.getTransactionReceipt(txHash);
-      if (!receipt || receipt.status !== 1) {
+      // 1) txHash がある場合はレシートから MachineRegistered を最優先で復元する
+      if (txHash) {
+        const receipt = await provider.getTransactionReceipt(txHash);
+        if (receipt && receipt.status === 1) {
+          for (const log of receipt.logs) {
+            try {
+              const parsed = iface.parseLog(log);
+              if (parsed.name !== 'MachineRegistered') continue;
+              nextMachineId = String(parsed.args.machineId);
+              nextTokenId = String(parsed.args.tokenId);
+              nextTxHash = receipt.hash;
+              break;
+            } catch {
+              // 対象イベント以外は無視する
+            }
+          }
+        }
+      }
+
+      // 2) tokenId があるのに machineId が不正な場合は tokenId から逆引きする
+      if (!nextMachineId && nextTokenId) {
+        try {
+          const machineIdByToken = await registry.getMachineIdByToken(BigInt(nextTokenId));
+          if (machineIdByToken && machineIdByToken !== ethers.ZeroHash) {
+            nextMachineId = String(machineIdByToken);
+          }
+        } catch {
+          // 逆引き不可の場合は後続判定に任せる
+        }
+      }
+
+      // 3) machineId があるのに tokenId が欠落している場合は machineId から逆引きする
+      if (nextMachineId && !nextTokenId) {
+        try {
+          const tokenIdByMachine = await registry.getTokenIdByMachine(nextMachineId);
+          if (tokenIdByMachine && tokenIdByMachine > 0n) {
+            nextTokenId = tokenIdByMachine.toString();
+          }
+        } catch {
+          // 逆引き不可の場合は後続判定に任せる
+        }
+      }
+
+      if (!nextMachineId || !nextTokenId) {
         skipped += 1;
         continue;
       }
 
-      let machineId = null;
-      let tokenId = null;
-      for (const log of receipt.logs) {
-        try {
-          const parsed = iface.parseLog(log);
-          if (parsed.name !== 'MachineRegistered') continue;
-          machineId = String(parsed.args.machineId);
-          tokenId = String(parsed.args.tokenId);
-          break;
-        } catch {
-          // 対象イベント以外は無視する
-        }
-      }
-
-      if (!machineId || !tokenId) {
+      const changed =
+        row.machineId !== nextMachineId
+        || row.onchainTokenId !== nextTokenId
+        || row.onchainTxHash !== nextTxHash
+        || row.status !== 'ACTIVE';
+      if (!changed) {
         skipped += 1;
         continue;
       }
@@ -66,8 +116,9 @@ async function main() {
       await prisma.machine.update({
         where: { id: row.id },
         data: {
-          machineId,
-          onchainTokenId: tokenId,
+          machineId: nextMachineId,
+          onchainTokenId: nextTokenId,
+          onchainTxHash: nextTxHash,
           status: 'ACTIVE',
         },
       });
@@ -88,4 +139,3 @@ void main().catch((e) => {
   console.error('[backfill-machine-onchain] 致命的エラー:', e);
   process.exit(1);
 });
-

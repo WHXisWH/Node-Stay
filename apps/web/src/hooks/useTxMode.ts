@@ -13,14 +13,13 @@
 
 import { useState } from 'react';
 import { isAddress, parseUnits, type Address } from 'viem';
+import { useAccount } from 'wagmi';
 import { useUserStore } from '../models/stores/user.store';
 import { useAaTransaction } from './useAaTransaction';
 import { useJPYCApprove } from './useJPYC';
 import { encodeJpycApprove } from '../services/aa/encodeMarketplaceCalls';
 import { CONTRACT_ADDRESSES } from '../services/config';
-
-/** AA または通常ウォレット */
-export type TxMode = 'aa' | 'wallet';
+import { resolveTxMode, type TxMode } from './txMode';
 
 export interface UseTxModeReturn {
   /** 現在のトランザクション実行モード */
@@ -38,19 +37,12 @@ export interface UseTxModeReturn {
   approveError: string | null;
 }
 
-/**
- * loginMethod と provider 状態からトランザクションモードを決定する。
- * 将来的なモード追加（例: AA + paymaster）もここで一元管理する。
- */
-function resolveTxMode(loginMethod: string | null): TxMode {
-  return loginMethod === 'social' ? 'aa' : 'wallet';
-}
-
 const JPYC_ADDRESS = CONTRACT_ADDRESSES.jpycToken as Address;
 
 export function useTxMode(): UseTxModeReturn {
   const loginMethod = useUserStore((s) => s.loginMethod);
-  const mode = resolveTxMode(loginMethod);
+  const { isConnected } = useAccount();
+  const mode = resolveTxMode(loginMethod, isConnected);
 
   // AA モード用（ソーシャルログイン時）
   const { sendUserOp, status: aaStatus, error: aaError } = useAaTransaction();
