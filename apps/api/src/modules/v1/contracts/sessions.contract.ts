@@ -18,6 +18,7 @@ export type CheckInResponse = z.infer<typeof CheckInResponseSchema>;
 /** POST /v1/sessions/checkout body */
 export const CheckoutBodySchema = z.object({
   sessionId: z.string().min(1),
+  payerWallet: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
 });
 export type CheckoutBody = z.infer<typeof CheckoutBodySchema>;
 

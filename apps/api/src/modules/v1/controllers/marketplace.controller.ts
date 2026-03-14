@@ -23,6 +23,7 @@ const CancelListingBody = z.object({
 
 const BuyListingBody = z.object({
   buyerUserId: z.string().optional(),
+  buyerWallet: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   onchainTxHash: TxHash,
 });
 
@@ -182,6 +183,7 @@ export class MarketplaceController {
     }
 
     const result = await this.listing.buyListing(id, user.address, {
+      buyerWallet: parsed.data.buyerWallet,
       onchainTxHash: parsed.data.onchainTxHash,
     });
     await this.idempotency.save(key, requestHash, result);

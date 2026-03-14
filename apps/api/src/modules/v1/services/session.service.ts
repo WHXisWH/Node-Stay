@@ -4,9 +4,14 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { SettlementContractService } from '../../../blockchain/settlement.contract.service';
 import { BlockchainService } from '../../../blockchain/blockchain.service';
 
+const DEFAULT_TREASURY_WALLET = '0x71BB0f1EBa26c41Ef6703ec30A249Bb0F293d6c8';
+
 const ERC20_BALANCE_ALLOWANCE_ABI = [
   'function balanceOf(address owner) view returns (uint256)',
   'function allowance(address owner, address spender) view returns (uint256)',
+] as const;
+const ERC721_OWNER_OF_ABI = [
+  'function ownerOf(uint256 tokenId) view returns (address)',
 ] as const;
 
 @Injectable()
@@ -78,6 +83,37 @@ export class SessionService {
     }
   }
 
+  /**
+   * payerWallet のなりすまし防止。
+   * 利用権 NFT がオンチェーンに存在する場合、ownerOf(tokenId) と payerWallet の一致を必須にする。
+   */
+  private async assertPayerOwnsUsageRight(
+    payerWallet: string,
+    onchainTokenId: string | null | undefined,
+  ): Promise<void> {
+    if (!this.blockchain.isEnabled) return;
+    if (!onchainTokenId || !/^\d+$/.test(onchainTokenId)) return;
+
+    const usageRightAddress = process.env.USAGE_RIGHT_ADDRESS?.trim()
+      ?? process.env.ACCESS_PASS_NFT_ADDRESS?.trim();
+    if (!usageRightAddress || !ethers.isAddress(usageRightAddress)) return;
+
+    const token = new ethers.Contract(usageRightAddress, ERC721_OWNER_OF_ABI, this.blockchain.provider);
+    let ownerOnChain: string;
+    try {
+      ownerOnChain = await token.ownerOf(BigInt(onchainTokenId));
+    } catch {
+      return;
+    }
+    const normalizedOwner = this.requireWalletAddress(ownerOnChain, 'オンチェーン所有者');
+    if (normalizedOwner.toLowerCase() !== payerWallet.toLowerCase()) {
+      throw new HttpException(
+        { message: '支払ウォレットが利用権のオンチェーン所有者と一致しません' },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+  }
+
   private requireWalletAddress(wallet: string | null | undefined, label: string): string {
     const normalized = wallet?.trim() ?? '';
     if (!normalized || !ethers.isAddress(normalized) || normalized === ethers.ZeroAddress) {
@@ -91,6 +127,7 @@ export class SessionService {
 
   private resolveFallbackTreasuryWallet(): string | null {
     const candidates = [
+      DEFAULT_TREASURY_WALLET,
       process.env.PLATFORM_TREASURY,
       process.env.PLATFORM_FEE_RECIPIENT,
     ];
@@ -155,7 +192,13 @@ export class SessionService {
     });
   }
 
-  async endSession(sessionId: string) {
+  async endSession(
+    sessionId: string,
+    input?: {
+      actorWalletAddress?: string;
+      payerWallet?: string;
+    },
+  ) {
     const session = await this.prisma.session.findUnique({
       where: { id: sessionId },
       include: {
@@ -170,8 +213,22 @@ export class SessionService {
     });
     if (!session) return null;
 
-    const payerWallet = this.requireWalletAddress(
+    const actorWallet = this.requireWalletAddress(
+      input?.actorWalletAddress ?? session.user?.walletAddress,
+      '実行者',
+    );
+    const sessionUserWallet = this.requireWalletAddress(
       session.user?.walletAddress,
+      'セッション所有者',
+    );
+    if (actorWallet.toLowerCase() !== sessionUserWallet.toLowerCase()) {
+      throw new HttpException(
+        { message: 'このセッションのチェックアウト権限がありません' },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    const payerWallet = this.requireWalletAddress(
+      input?.payerWallet ?? sessionUserWallet,
       '支払者',
     );
 
@@ -214,6 +271,7 @@ export class SessionService {
       ? SettlementContractService.toReferenceId(session.machineId)
       : '0x0000000000000000000000000000000000000000000000000000000000000000';
     const grossAmountJpyc = BigInt(rawPrice) * 10n ** 18n;
+    await this.assertPayerOwnsUsageRight(payerWallet, session.usageRight?.onchainTokenId);
     await this.assertPayerCanSettle(payerWallet, grossAmountJpyc);
 
     this.logger.log(

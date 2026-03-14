@@ -110,16 +110,22 @@ describe('SessionService treasury wallet handling', () => {
     );
   });
 
-  it('店舗ウォレットもフォールバック環境変数も無い場合は 422 を返す', async () => {
+  it('店舗ウォレットも環境変数も無い場合でも既定ウォレットへフォールバックして checkout を完了する', async () => {
     delete process.env.PLATFORM_TREASURY;
     delete process.env.PLATFORM_FEE_RECIPIENT;
 
     const { service, settlement } = buildService({ treasuryWallet: null });
-    await expect(service.endSession('session-1')).rejects.toMatchObject({
-      status: HttpStatus.UNPROCESSABLE_ENTITY,
-      response: { message: '店舗受取ウォレットが未設定です' },
-    });
-    expect(settlement.settleUsage).not.toHaveBeenCalled();
+    await expect(service.endSession('session-1')).resolves.toEqual(
+      expect.objectContaining({
+        id: 'session-1',
+        status: 'COMPLETED',
+      }),
+    );
+    expect(settlement.settleUsage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        venueTreasury: '0x71BB0f1EBa26c41Ef6703ec30A249Bb0F293d6c8',
+      }),
+    );
   });
 
   it('無効な payer ウォレットは 422 で弾く', async () => {
@@ -131,7 +137,7 @@ describe('SessionService treasury wallet handling', () => {
 
     await expect(service.endSession('session-1')).rejects.toMatchObject({
       status: HttpStatus.UNPROCESSABLE_ENTITY,
-      response: { message: '支払者ウォレットが未設定または不正です' },
+      response: { message: '実行者ウォレットが未設定または不正です' },
     });
     expect(settlement.settleUsage).not.toHaveBeenCalled();
   });

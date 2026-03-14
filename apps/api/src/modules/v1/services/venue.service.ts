@@ -2,6 +2,8 @@ import { HttpException, HttpStatus, Injectable, Logger, OnModuleInit } from '@ne
 import { ethers } from 'ethers';
 import { PrismaService } from '../../../prisma/prisma.service';
 
+const DEFAULT_TREASURY_WALLET = '0x71BB0f1EBa26c41Ef6703ec30A249Bb0F293d6c8';
+
 @Injectable()
 export class VenueService implements OnModuleInit {
   private readonly logger = new Logger(VenueService.name);
@@ -20,6 +22,7 @@ export class VenueService implements OnModuleInit {
     }
 
     const candidates = [
+      DEFAULT_TREASURY_WALLET,
       process.env.PLATFORM_TREASURY,
       process.env.PLATFORM_FEE_RECIPIENT,
       operatorAddress,

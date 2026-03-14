@@ -13,6 +13,7 @@ import { createNodeStayClient } from '../services/nodestay';
 import { useUserStore } from '../stores/user.store';
 import { CONTRACT_ADDRESSES } from '../services/config';
 import { useTxMode } from './useTxMode';
+import { useUserState } from './useUserState';
 
 export type SessionStatus = 'IN_USE' | 'OVERTIME' | 'ENDED';
 
@@ -48,7 +49,7 @@ export function useSessionPage(): UseSessionPageReturn {
   // User store からアクティブセッション ID を取得
   const activeSessionId = useUserStore((s) => s.activeSessionId);
   const setActiveSessionId = useUserStore((s) => s.setActiveSessionId);
-  const walletAddress = useUserStore((s) => s.walletAddress);
+  const { onchainWalletAddress } = useUserState();
   const { approveJPYC } = useTxMode();
 
   const [session, setSession] = useState<ActiveSession | null>(null);
@@ -76,7 +77,7 @@ export function useSessionPage(): UseSessionPageReturn {
   ): Promise<boolean> => {
     if (!(error instanceof NodeStayApiError)) return false;
     if (error.status !== 422) return false;
-    if (!walletAddress || !isAddress(walletAddress)) return false;
+    if (!onchainWalletAddress || !isAddress(onchainWalletAddress)) return false;
     if (!error.bodyJson || typeof error.bodyJson !== 'object') return false;
 
     const payload = error.bodyJson as Record<string, unknown>;
@@ -97,10 +98,10 @@ export function useSessionPage(): UseSessionPageReturn {
     await approveJPYC(spender as `0x${string}`, Number(approveJpyc));
     const client = createNodeStayClient();
     const retryKey = `checkout-retry-${sessionId}-${Date.now()}`;
-    const retryResult = await client.checkoutSession({ sessionId }, retryKey);
+    const retryResult = await client.checkoutSession({ sessionId, payerWallet: onchainWalletAddress }, retryKey);
     completeCheckout(retryResult);
     return true;
-  }, [approveJPYC, completeCheckout, settlementAddress, walletAddress]);
+  }, [approveJPYC, completeCheckout, settlementAddress, onchainWalletAddress]);
 
   /** API からセッション情報を取得し ActiveSession 型にマッピング */
   const loadSession = useCallback(async () => {
@@ -166,7 +167,10 @@ export function useSessionPage(): UseSessionPageReturn {
     try {
       const client = createNodeStayClient();
       const key = `checkout-${session.sessionId}-${Date.now()}`;
-      const result = await client.checkoutSession({ sessionId: session.sessionId }, key);
+      const result = await client.checkoutSession(
+        { sessionId: session.sessionId, payerWallet: onchainWalletAddress ?? undefined },
+        key,
+      );
       completeCheckout(result);
     } catch (e) {
       const recovered = await maybeApproveAndRetryCheckout(e, session.sessionId).catch(() => false);

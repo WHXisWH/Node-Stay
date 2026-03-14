@@ -39,7 +39,7 @@ export const SessionService = {
     set.setError(null);
     try {
       const data = (await c.checkoutSession(
-        { sessionId: input.sessionId },
+        { sessionId: input.sessionId, payerWallet: input.payerWallet },
         idempotencyKey
       )) as unknown as CheckOutResult;
       set.setLastCheckOut(data);

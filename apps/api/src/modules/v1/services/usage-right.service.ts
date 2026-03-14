@@ -375,6 +375,7 @@ export class UsageRightService {
     newOwnerUserId: string,
     onchainTxHash: string,
     actorWalletAddress: string,
+    fromWalletAddress?: string,
   ) {
     const right = await this.prisma.usageRight.findUnique({
       where: { id: usageRightId },
@@ -402,7 +403,8 @@ export class UsageRightService {
       ownerUserId = await this.userService.findOrCreateByWallet(ownerUserId);
     }
 
-    const [currentOwner, nextOwner] = await Promise.all([
+    const [actorUserId, currentOwner, nextOwner] = await Promise.all([
+      this.userService.resolveUserId({ walletAddress: actorWalletAddress }),
       this.prisma.user.findUnique({
         where: { id: right.ownerUserId },
         select: { walletAddress: true },
@@ -412,16 +414,18 @@ export class UsageRightService {
         select: { walletAddress: true },
       }),
     ]);
-    const fromWallet = this.requireWalletAddress(currentOwner?.walletAddress, '現在所有者');
-    const toWallet = this.requireWalletAddress(nextOwner?.walletAddress, '新しい所有者');
-    const tokenId = BigInt(right.onchainTokenId);
-    const actorWallet = this.requireWalletAddress(actorWalletAddress, '実行者');
-    if (fromWallet.toLowerCase() !== actorWallet.toLowerCase()) {
+    if (!actorUserId || actorUserId !== right.ownerUserId) {
       throw new HttpException(
         { message: 'この利用権の譲渡権限がありません' },
         HttpStatus.FORBIDDEN,
       );
     }
+    const fromWallet = this.requireWalletAddress(
+      fromWalletAddress ?? currentOwner?.walletAddress,
+      '現在所有者',
+    );
+    const toWallet = this.requireWalletAddress(nextOwner?.walletAddress, '新しい所有者');
+    const tokenId = BigInt(right.onchainTokenId);
     if (fromWallet.toLowerCase() === toWallet.toLowerCase()) {
       throw new HttpException(
         { message: '譲渡先ウォレットが現在所有者と同一です' },

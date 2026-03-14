@@ -19,6 +19,7 @@ export interface CheckInResult {
 /** Input for POST /v1/sessions/checkout (body) */
 export interface CheckOutInput {
   sessionId: string;
+  payerWallet?: `0x${string}`;
 }
 
 /** Charges breakdown from checkout response */

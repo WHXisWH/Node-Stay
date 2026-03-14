@@ -15,6 +15,7 @@ const CheckInBody = z.object({
 
 const CheckoutBody = z.object({
   sessionId: z.string().min(1),
+  payerWallet: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
 });
 
 @Controller('/v1/sessions')
@@ -92,6 +93,7 @@ export class SessionsController {
 
   @Post('/checkout')
   async checkout(
+    @CurrentUser() user: AuthenticatedUser,
     @Body() body: unknown,
     @Headers('idempotency-key') rawKey: string | undefined,
   ) {
@@ -115,7 +117,10 @@ export class SessionsController {
       return existing.response;
     }
 
-    const ended = await this.sessions.endSession(parsed.data.sessionId);
+    const ended = await this.sessions.endSession(parsed.data.sessionId, {
+      actorWalletAddress: user.address,
+      payerWallet: parsed.data.payerWallet,
+    });
     if (!ended) throw new HttpException({ message: 'セッションが見つかりません' }, HttpStatus.NOT_FOUND);
 
     const response = {

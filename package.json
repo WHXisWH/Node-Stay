@@ -19,6 +19,7 @@
     "prisma:migrate": "cd apps/api && npx prisma migrate deploy",
     "prisma:studio": "cd apps/api && npx prisma studio",
     "backfill:machines:onchain": "node scripts/backfill-machine-onchain.mjs",
+    "backfill:merchants:treasury": "node scripts/backfill-merchant-treasury.mjs",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down"
   },

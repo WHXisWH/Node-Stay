@@ -21,6 +21,7 @@ interface BaseTask<TType extends SyncTaskType, TPayload> {
 type BuyListingTask = BaseTask<'BUY_LISTING', {
   listingId: string;
   buyerUserId: string;
+  buyerWallet?: string;
   onchainTxHash: string;
   idempotencyKey: string;
 }>;
@@ -155,6 +156,7 @@ class MarketplaceSyncOutboxServiceClass {
         await MarketplaceService.buyListing(
           task.payload.listingId,
           task.payload.buyerUserId,
+          task.payload.buyerWallet,
           task.payload.onchainTxHash,
           ensureIdempotencyKey(task.payload.idempotencyKey, `buy-${task.id}`),
         );

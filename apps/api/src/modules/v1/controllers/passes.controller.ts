@@ -13,6 +13,7 @@ const PurchaseBody = z.object({
 
 const TransferBody = z.object({
   newOwnerUserId: z.string().min(1),
+  fromWallet: z.string().regex(/^0x[0-9a-fA-F]{40}$/).optional(),
   onchainTxHash: z.string().regex(/^0x[0-9a-fA-F]{64}$/),
 });
 
@@ -120,6 +121,7 @@ export class PassesController {
       parsed.data.newOwnerUserId,
       parsed.data.onchainTxHash,
       user.address,
+      parsed.data.fromWallet,
     );
     if (!result) throw new HttpException({ message: '利用権が見つからないか、譲渡できません' }, HttpStatus.NOT_FOUND);
 

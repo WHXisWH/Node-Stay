@@ -59,12 +59,14 @@ class MarketplaceServiceClass {
   async buyListing(
     listingId: string,
     buyerUserId: string,
+    buyerWallet: string | undefined,
     onchainTxHash: string,
     idempotencyKey?: string,
   ): Promise<void> {
     await this.client.buyMarketplaceListing(
       listingId,
       buyerUserId,
+      buyerWallet,
       onchainTxHash,
       idempotencyKey ?? makeIdempotencyKey(`buy-${listingId}`),
     );

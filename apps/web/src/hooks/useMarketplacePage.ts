@@ -11,7 +11,7 @@ import { createNodeStayClient } from '../services/nodestay';
 import { useMarketplaceWrite } from './useMarketplaceWrite';
 import { useAaBuyListing } from './useAaBuyListing';
 import { useTxMode } from './useTxMode';
-import { useUserStore } from '../stores/user.store';
+import { useUserState } from './useUserState';
 import { MarketplaceSyncOutboxService } from '../services/marketplaceSyncOutbox.service';
 
 export type ListingType = 'USAGE' | 'COMPUTE' | 'REVENUE';
@@ -78,8 +78,8 @@ export function useMarketplacePage(): UseMarketplacePageReturn {
   const [purchaseSuccess, setPurchaseSuccess] = useState(false);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
 
-  // SIWE 認証済みアドレス（バックエンド同期の buyerUserId に使用）
-  const walletAddress = useUserStore((s) => s.walletAddress);
+  // 認証用（EOA）とオンチェーン送信用（AA/EOA）を明示的に分離する
+  const { walletAddress, onchainWalletAddress } = useUserState();
 
   // 統一トランザクションルーター（AA / wagmi の選択を一元管理）
   const { mode } = useTxMode();
@@ -199,6 +199,7 @@ export function useMarketplacePage(): UseMarketplacePageReturn {
       const syncResult = await MarketplaceSyncOutboxService.enqueueBuyListing({
         listingId:    dbListingId,
         buyerUserId:  walletAddress,
+        buyerWallet:  onchainWalletAddress ?? undefined,
         onchainTxHash: txHash,
         idempotencyKey,
       });

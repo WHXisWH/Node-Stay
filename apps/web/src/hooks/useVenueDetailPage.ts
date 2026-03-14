@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { isAddress } from 'viem';
-import { useUserStore } from '../models/stores/user.store';
+import { useUserState } from './useUserState';
 import { useVenueStore } from '../stores/venue.store';
 import { VenueService } from '../services/venue.service';
 import { CONTRACT_ADDRESSES } from '../services/config';
@@ -46,12 +46,10 @@ export function useVenueDetailPage(venueId: string | undefined): UseVenueDetailP
     plansError,
   } = useVenueStore();
 
-  // SIWE 認証済みアドレス（API 呼び出しに使用）
-  const walletAddress = useUserStore((s) => s.walletAddress);
-  // ユーザーの JPYC 残高オブジェクト
-  const balanceObj = useUserStore((s) => s.balance);
+  // 認証用アドレス（EOA）とオンチェーン送信用アドレス（AA/EOA）を分離する
+  const { walletAddress, onchainWalletAddress, balance: balanceMinor } = useUserState();
   // 残高を数値（minor 単位：1/100 JPYC）として抽出
-  const balance = balanceObj?.balanceMinor ?? null;
+  const balance = balanceMinor;
 
   const [selectedPlan, setSelectedPlan] = useState<PlanListItem | null>(null);
   const [purchasing, setPurchasing] = useState(false);
@@ -65,7 +63,7 @@ export function useVenueDetailPage(venueId: string | undefined): UseVenueDetailP
 
   const settlementAddress = CONTRACT_ADDRESSES.settlement;
   // ウォレットアドレスがあり、かつ settlement アドレスが有効な場合に approve が必要
-  const needsApproval = isAddress(settlementAddress) && !!walletAddress;
+  const needsApproval = isAddress(settlementAddress) && !!onchainWalletAddress;
 
   // 購入に必要な合計金額（基本料金 + デポジット）
   const requiredAmount = selectedPlan
@@ -99,6 +97,9 @@ export function useVenueDetailPage(venueId: string | undefined): UseVenueDetailP
     setMintedTokenId(null);
     setPurchasing(true);
     try {
+      if (!onchainWalletAddress) {
+        throw new Error('オンチェーン送信用ウォレットが未初期化です。AAウォレットを初期化してください。');
+      }
       if (needsApproval) {
         // useTxMode が loginMethod を見て AA / wagmi を自動選択
         const totalMinor = selectedPlan.basePriceMinor + selectedPlan.depositRequiredMinor;
@@ -110,7 +111,7 @@ export function useVenueDetailPage(venueId: string | undefined): UseVenueDetailP
         {
           productId:    selectedPlan.productId,
           ownerUserId:  walletAddress ?? undefined,
-          buyerWallet:  walletAddress ?? undefined,
+          buyerWallet:  onchainWalletAddress,
         },
         `purchase-${selectedPlan.productId}-${Date.now()}`
       );
@@ -132,7 +133,7 @@ export function useVenueDetailPage(venueId: string | undefined): UseVenueDetailP
           setMintStatus('timeout');
         }
       })();
-    } catch (e) {
+    } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : '購入処理に失敗しました';
       setPurchaseError(approveError ?? msg);
     } finally {

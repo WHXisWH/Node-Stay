@@ -16,6 +16,7 @@ import { useUserStore } from '../stores/user.store';
 import { useAaTransaction } from './useAaTransaction';
 import type { UsageRightStatus } from './usePassesPage';
 import { resolveTxMode } from './txMode';
+import { useUserState } from './useUserState';
 
 export interface UsageRightDetail {
   usageRightId: string;
@@ -168,8 +169,8 @@ function isConnectorNotConnectedError(error: unknown): boolean {
 
 export function useUsageRightDetail(id: string | undefined): UseUsageRightDetailReturn {
   const loginMethod = useUserStore((s) => s.loginMethod);
-  const walletAddress = useUserStore((s) => s.walletAddress);
-  const { isConnected, address: connectedWalletAddress } = useAccount();
+  const { walletAddress, onchainWalletAddress } = useUserState();
+  const { isConnected } = useAccount();
   const mode = resolveTxMode(loginMethod, isConnected);
   const config = useConfig();
   const { writeContractAsync } = useWriteContract();
@@ -292,7 +293,7 @@ export function useUsageRightDetail(id: string | undefined): UseUsageRightDetail
       setTransferError('オンチェーン Token ID が未設定のため譲渡できません。');
       return;
     }
-    const fromWallet = (connectedWalletAddress ?? walletAddress ?? '').trim();
+    const fromWallet = (onchainWalletAddress ?? walletAddress ?? '').trim();
     if (!isAddress(fromWallet)) {
       setTransferError('ウォレット情報が取得できません。再ログインしてください。');
       return;
@@ -355,7 +356,7 @@ export function useUsageRightDetail(id: string | undefined): UseUsageRightDetail
       }
 
       const client = createNodeStayClient();
-      await client.transferUsageRight(id, addr, onchainTxHash, crypto.randomUUID());
+      await client.transferUsageRight(id, addr, onchainTxHash, crypto.randomUUID(), fromWallet);
       setTransferSuccess(true);
       setShowTransfer(false);
       // 譲渡成功後に詳細を再取得して状態を同期する

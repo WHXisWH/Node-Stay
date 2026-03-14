@@ -170,7 +170,10 @@ export class NodeStayClient {
     });
   }
 
-  async checkoutSession(input: { sessionId: string }, idempotencyKey: string): Promise<JsonObject> {
+  async checkoutSession(
+    input: { sessionId: string; payerWallet?: string },
+    idempotencyKey: string,
+  ): Promise<JsonObject> {
     const key = normalizeIdempotencyKey(idempotencyKey);
     return await this.json('/v1/sessions/checkout', {
       method: 'POST',
@@ -442,12 +445,13 @@ export class NodeStayClient {
     newOwnerUserId: string,
     onchainTxHash: string,
     idempotencyKey: string,
+    fromWallet?: string,
   ): Promise<{ usageRightId: string; status: string }> {
     const key = normalizeIdempotencyKey(idempotencyKey);
     return await this.json(`/v1/usage-rights/${encodeURIComponent(id)}/transfer`, {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'idempotency-key': key },
-      body: JSON.stringify({ newOwnerUserId, onchainTxHash }),
+      body: JSON.stringify({ newOwnerUserId, onchainTxHash, fromWallet }),
     });
   }
 
@@ -604,6 +608,7 @@ export class NodeStayClient {
   async buyMarketplaceListing(
     listingId: string,
     buyerUserId: string,
+    buyerWallet: string | undefined,
     onchainTxHash: string,
     idempotencyKey: string,
   ): Promise<{
@@ -618,7 +623,7 @@ export class NodeStayClient {
         'content-type': 'application/json',
         'idempotency-key': normalizeIdempotencyKey(idempotencyKey),
       },
-      body: JSON.stringify({ buyerUserId, onchainTxHash }),
+      body: JSON.stringify({ buyerUserId, buyerWallet, onchainTxHash }),
     });
   }
 

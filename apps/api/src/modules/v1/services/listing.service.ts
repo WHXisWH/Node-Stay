@@ -70,6 +70,17 @@ export class ListingService {
     return wallet.toLowerCase();
   }
 
+  private normalizeWalletAddress(wallet: string, label: string): string {
+    const normalized = wallet.trim();
+    if (!normalized || !ethers.isAddress(normalized) || normalized === ethers.ZeroAddress) {
+      throw new HttpException(
+        { message: `${label}のウォレットアドレスが不正です` },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    return normalized.toLowerCase();
+  }
+
   private async getMarketplaceReceiptOrThrow(txHash: string) {
     const normalized = txHash.trim();
     if (!/^0x[0-9a-fA-F]{64}$/.test(normalized)) {
@@ -364,12 +375,18 @@ export class ListingService {
     });
   }
 
-  async buyListing(listingId: string, buyerUserId: string, input: { onchainTxHash: string }) {
+  async buyListing(
+    listingId: string,
+    buyerUserId: string,
+    input: { onchainTxHash: string; buyerWallet?: string },
+  ) {
     let buyerId = buyerUserId.trim();
     if (/^0x[0-9a-fA-F]{40}$/.test(buyerId)) {
       buyerId = await this.userService.findOrCreateByWallet(buyerId);
     }
-    const buyerWallet = await this.resolveWalletAddressByUserId(buyerId, '購入者');
+    const buyerWallet = input.buyerWallet?.trim()
+      ? this.normalizeWalletAddress(input.buyerWallet, '購入者')
+      : await this.resolveWalletAddressByUserId(buyerId, '購入者');
 
     return this.prisma.$transaction(async (tx) => {
       const listing = await tx.usageListing.findUnique({
