@@ -53,7 +53,7 @@ export function LoginPromptBanner() {
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 shadow-lg flex items-start gap-3">
         {/* アイコン */}
         <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-          <svg
+          <svg viewBox="0 0 24 24"
             width="16"
             height="16"
             fill="none"
@@ -81,7 +81,7 @@ export function LoginPromptBanner() {
           className="w-6 h-6 rounded-lg hover:bg-amber-100 flex items-center justify-center text-amber-500 transition-colors flex-shrink-0"
           aria-label="閉じる"
         >
-          <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <line x1="2" y1="2" x2="10" y2="10" />
             <line x1="10" y1="2" x2="2" y2="10" />
           </svg>

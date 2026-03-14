@@ -149,7 +149,7 @@ function CheckoutComplete({
   return (
     <div className="max-w-md mx-auto text-center">
       <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6">
-        <svg width="36" height="36" fill="none" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+        <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="4 12 9 17 20 7" />
         </svg>
       </div>

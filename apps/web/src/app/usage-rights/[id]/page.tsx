@@ -74,7 +74,7 @@ function QrModal({ right, onClose }: { right: UsageRightDetail; onClose: () => v
             onClick={onClose}
             className="w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400"
           >
-            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <line x1="4" y1="4" x2="14" y2="14" /><line x1="14" y1="4" x2="4" y2="14" />
             </svg>
           </button>
@@ -142,7 +142,7 @@ function TransferModal({
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-base font-bold text-slate-900">利用権を譲渡する</h2>
           <button onClick={onClose} className="w-7 h-7 rounded-lg hover:bg-slate-100 flex items-center justify-center text-slate-400">
-            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <line x1="4" y1="4" x2="14" y2="14" /><line x1="14" y1="4" x2="4" y2="14" />
             </svg>
           </button>
@@ -315,7 +315,7 @@ export default function UsageRightDetailPage() {
               </div>
               <h1 className="text-3xl font-extrabold text-white mb-1">{right.planName}</h1>
               <p className="text-slate-400 flex items-center gap-1.5">
-                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z" /><circle cx="12" cy="10" r="3" />
                 </svg>
                 <Link href={`/venues/${right.venueId}`} className="hover:text-slate-200 transition-colors">
@@ -326,7 +326,7 @@ export default function UsageRightDetailPage() {
 
             {/* 戻るボタン */}
             <Link href="/usage-rights" className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/15 text-white text-sm font-medium rounded-lg transition-colors">
-              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
               </svg>
               一覧に戻る
@@ -345,7 +345,7 @@ export default function UsageRightDetailPage() {
             {/* 譲渡成功バナー */}
             {transferSuccess && (
               <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700 flex items-center gap-2">
-                <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                   <polyline points="4 12 8 16 20 8" />
                 </svg>
                 <div className="flex flex-col gap-1">
@@ -367,7 +367,7 @@ export default function UsageRightDetailPage() {
             {/* キャンセル成功バナー */}
             {cancelSuccess && (
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-600 flex items-center gap-2">
-                <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                   <polyline points="4 12 8 16 20 8" />
                 </svg>
                 利用権をキャンセルしました
@@ -378,7 +378,7 @@ export default function UsageRightDetailPage() {
             {(isActive || right.status === 'IN_USE') && (
               <div className="card p-5 text-center">
                 <div className="w-36 h-36 mx-auto mb-4 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center gap-2">
-                  <svg width="36" height="36" fill="none" stroke="#CBD5E1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="36" height="36" viewBox="0 0 30 30" fill="none" stroke="#CBD5E1" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="3" y="3" width="10" height="10" /><rect x="17" y="3" width="10" height="10" />
                     <rect x="3" y="17" width="10" height="10" /><rect x="19" y="19" width="3" height="3" />
                     <rect x="23" y="19" width="3" height="3" /><rect x="19" y="23" width="3" height="3" />
@@ -406,7 +406,7 @@ export default function UsageRightDetailPage() {
                   onClick={() => setShowTransfer(true)}
                   className="btn-secondary w-full py-2.5 text-sm flex items-center justify-center gap-2"
                 >
-                  <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 12H19" /><path d="M12 5l7 7-7 7" />
                   </svg>
                   利用権を譲渡する
@@ -552,7 +552,7 @@ export default function UsageRightDetailPage() {
                     className="text-xs text-brand-600 hover:text-brand-800 font-semibold flex items-center gap-1 transition-colors"
                   >
                     取引詳細を確認する
-                    <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                       <polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" />
                     </svg>

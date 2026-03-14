@@ -14,7 +14,7 @@ const VenueMap = dynamic(() => import('../../components/explore/VenueMap'), {
     <div className="w-full h-full bg-surface-900 flex items-center justify-center">
       <div className="flex flex-col items-center gap-3 animate-fade-in">
         <div className="w-12 h-12 rounded-xl bg-surface-800 flex items-center justify-center border border-slate-700">
-          <svg width="24" height="24" fill="none" stroke="#6366F1" strokeWidth="2" strokeLinecap="round" className="animate-pulse-slow">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#6366F1" strokeWidth="2" strokeLinecap="round" className="animate-pulse-slow">
             <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z" />
             <circle cx="12" cy="10" r="3" />
           </svg>
@@ -65,7 +65,7 @@ export default function ExplorePage() {
               href="/venues"
               className="hidden md:inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-slate-300 border border-slate-700 rounded-xl hover:bg-slate-800 hover:text-white transition-all"
             >
-              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <rect x="3" y="3" width="7" height="7" rx="1" />
                 <rect x="14" y="3" width="7" height="7" rx="1" />
                 <rect x="3" y="14" width="7" height="7" rx="1" />
@@ -130,7 +130,7 @@ export default function ExplorePage() {
           <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-slate-50/50 shrink-0">
             <div className="flex items-center gap-2.5">
               <div className="w-7 h-7 rounded-lg bg-brand-50 flex items-center justify-center">
-                <svg width="14" height="14" fill="none" stroke="#6366F1" strokeWidth="2" strokeLinecap="round">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#6366F1" strokeWidth="2" strokeLinecap="round">
                   <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z" />
                   <circle cx="12" cy="10" r="3" />
                 </svg>

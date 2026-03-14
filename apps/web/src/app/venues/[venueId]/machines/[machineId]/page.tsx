@@ -193,7 +193,7 @@ export default function MachineDetailPage() {
               {/* 店舗住所 */}
               <p className="text-slate-400 text-sm flex items-center gap-1.5">
                 {/* 位置アイコン */}
-                <svg
+                <svg viewBox="0 0 24 24"
                   width="14"
                   height="14"
                   fill="none"
@@ -231,7 +231,7 @@ export default function MachineDetailPage() {
             <div className="card p-6">
               <h2 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
                 {/* チップアイコン */}
-                <svg
+                <svg viewBox="0 0 24 24"
                   width="16"
                   height="16"
                   fill="none"
@@ -253,7 +253,7 @@ export default function MachineDetailPage() {
               {/* CPU */}
               <SpecRow
                 icon={
-                  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                     <rect x="2" y="2" width="20" height="20" rx="3" />
                     <rect x="8" y="8" width="8" height="8" />
                   </svg>
@@ -265,7 +265,7 @@ export default function MachineDetailPage() {
               {/* GPU */}
               <SpecRow
                 icon={
-                  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                     <rect x="2" y="3" width="20" height="14" rx="2" />
                     <line x1="8" y1="21" x2="16" y2="21" />
                     <line x1="12" y1="17" x2="12" y2="21" />
@@ -278,7 +278,7 @@ export default function MachineDetailPage() {
               {/* RAM */}
               <SpecRow
                 icon={
-                  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                     <rect x="2" y="6" width="20" height="12" rx="2" />
                     <line x1="6" y1="6" x2="6" y2="18" />
                     <line x1="10" y1="6" x2="10" y2="18" />
@@ -293,7 +293,7 @@ export default function MachineDetailPage() {
               {/* ストレージ */}
               <SpecRow
                 icon={
-                  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                     <ellipse cx="12" cy="5" rx="9" ry="3" />
                     <path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5" />
                   </svg>
@@ -313,7 +313,7 @@ export default function MachineDetailPage() {
             <div className="card p-6">
               <h2 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
                 {/* グラフアイコン */}
-                <svg
+                <svg viewBox="0 0 24 24"
                   width="16"
                   height="16"
                   fill="none"
@@ -352,7 +352,7 @@ export default function MachineDetailPage() {
             <div className="card p-6">
               <h2 className="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
                 {/* リンクアイコン */}
-                <svg
+                <svg viewBox="0 0 24 24"
                   width="16"
                   height="16"
                   fill="none"
@@ -393,7 +393,7 @@ export default function MachineDetailPage() {
               <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
                 <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
                   {/* カレンダーアイコン */}
-                  <svg
+                  <svg viewBox="0 0 24 24"
                     width="16"
                     height="16"
                     fill="none"

@@ -54,7 +54,7 @@ function PlanCard({
         <h3 className="text-base font-bold text-slate-900 mb-1">{plan.name}</h3>
         <div className="flex items-center gap-1.5">
           {/* 時計アイコン */}
-          <svg
+          <svg viewBox="0 0 24 24"
             width="14"
             height="14"
             fill="none"
@@ -101,7 +101,7 @@ function PlanCard({
       <ul className="flex flex-col gap-2">
         {['超過自動精算', 'QRチェックイン', 'デポジット自動解除'].map((feat) => (
           <li key={feat} className="flex items-center gap-2 text-sm text-slate-600">
-            <svg
+            <svg viewBox="0 0 24 24"
               width="14"
               height="14"
               fill="none"
@@ -233,7 +233,7 @@ function PurchaseModal({
       {insufficientBalance && (
         <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2" role="alert">
           <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-            <svg width="10" height="10" fill="none" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="#DC2626" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
               <line x1="5" y1="2" x2="5" y2="6" />
               <circle cx="5" cy="8" r="0.5" fill="#DC2626" />
             </svg>
@@ -366,7 +366,7 @@ export default function VenueDetailPage() {
               </div>
               {venue && (
                 <p className="text-slate-400 flex items-center gap-1.5">
-                  <svg
+                  <svg viewBox="0 0 24 24"
                     width="14"
                     height="14"
                     fill="none"
@@ -387,7 +387,7 @@ export default function VenueDetailPage() {
               href="/venues"
               className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/15 text-white text-sm font-medium rounded-lg transition-colors"
             >
-              <svg
+              <svg viewBox="0 0 24 24"
                 width="14"
                 height="14"
                 fill="none"
@@ -411,7 +411,7 @@ export default function VenueDetailPage() {
         {purchaseSuccess && (
           <div className="mb-8 p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-3">
             <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <svg width="12" height="12" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
                 <polyline points="2 6 5 10 11 3" />
               </svg>
             </div>
@@ -463,7 +463,7 @@ export default function VenueDetailPage() {
         {/* 注意事項 */}
         <div className="card p-6 bg-slate-50">
           <h3 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
-            <svg
+            <svg viewBox="0 0 24 24"
               width="16"
               height="16"
               fill="none"

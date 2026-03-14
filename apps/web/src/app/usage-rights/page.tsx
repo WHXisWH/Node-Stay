@@ -364,7 +364,7 @@ function UsageRightCard({
                   href={`/usage-rights/${right.usageRightId}?modal=transfer`}
                   className="btn-secondary py-2.5 px-3 text-sm"
                 >
-                  <svg
+                  <svg viewBox="0 0 24 24"
                     width="15"
                     height="15"
                     fill="none"
@@ -475,7 +475,7 @@ export default function UsageRightsPage() {
         {latestTxHash && latestTxType && (
           <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3 animate-fade-in">
             <div className="w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center flex-shrink-0">
-              <svg width="12" height="12" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round">
                 <polyline points="2 6 5 10 11 3" />
               </svg>
             </div>
