@@ -192,13 +192,27 @@ export class RevenueService {
 
     const machine = await this.prisma.machine.findUnique({
       where: { id: input.machineId },
-      include: { venue: { select: { merchantId: true } } },
+      include: {
+        venue: { select: { merchantId: true } },
+      },
     });
     if (!machine) {
       throw new HttpException({ message: 'machine が見つかりません' }, HttpStatus.NOT_FOUND);
     }
     if (machine.venue.merchantId !== input.merchantId) {
       throw new HttpException({ message: 'この machine を発行対象にする権限がありません' }, HttpStatus.FORBIDDEN);
+    }
+    if (!machine.onchainTokenId) {
+      throw new HttpException(
+        { message: 'machine がオンチェーン未登録のため収益プログラムを作成できません' },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    if (!machine.machineId || machine.machineId === ethers.ZeroHash) {
+      throw new HttpException(
+        { message: 'machine のオンチェーン識別子が不正です' },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
     }
 
     const userIds = [...new Set(input.investors.map((v) => v.holderUserId))];
@@ -296,7 +310,7 @@ export class RevenueService {
       where: { id: programId },
       include: {
         machine: {
-          select: { machineId: true },
+          select: { machineId: true, onchainTokenId: true },
         },
         revenueRights: {
           include: {
@@ -312,6 +326,12 @@ export class RevenueService {
     }
     if (program.status !== 'APPROVED') {
       throw new HttpException({ message: '承認済みプログラムのみ発行できます' }, HttpStatus.CONFLICT);
+    }
+    if (!program.machine?.onchainTokenId) {
+      throw new HttpException(
+        { message: 'machine がオンチェーン未登録のため発行できません' },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
     }
 
     const walletToAmount = new Map<string, bigint>();

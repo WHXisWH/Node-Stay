@@ -1,10 +1,11 @@
-import { Body, Controller, Get, HttpException, HttpStatus, Param, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, HttpException, HttpStatus, Param, Post, Put, Query } from '@nestjs/common';
 import { z } from 'zod';
 import { ethers } from 'ethers';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { VenueService } from '../services/venue.service';
 import { CurrentUser, type AuthenticatedUser } from '../decorators/current-user.decorator';
 import { UserService } from '../services/user.service';
+import { ComputeService } from '../services/compute.service';
 
 const CreateVenueBody = z.object({
   merchantId: z.string().min(1),
@@ -42,12 +43,28 @@ const TreasuryWalletBody = z.object({
   treasuryWallet: z.string().min(1),
 });
 
+const MerchantComputeWindow = z.object({
+  dayOfWeek: z.number().int().min(0).max(6),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/),
+});
+
+const UpsertMerchantComputeNodeBody = z.object({
+  enabled: z.boolean(),
+  pricePerHourMinor: z.number().int().min(1),
+  minBookingHours: z.number().int().min(1).max(24),
+  maxBookingHours: z.number().int().min(1).max(24),
+  supportedTasks: z.array(z.string()).min(1),
+  availableWindows: z.array(MerchantComputeWindow),
+});
+
 @Controller('/v1/merchant')
 export class MerchantController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly venueService: VenueService,
     private readonly userService: UserService,
+    private readonly computeService: ComputeService,
   ) {}
 
   @Get('/venues')
@@ -265,6 +282,40 @@ export class MerchantController {
       venueId,
       computeEnabled: parsed.data.enable,
     };
+  }
+
+  @Get('/compute/nodes')
+  async listMerchantComputeNodes(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('venueId') venueId?: string,
+  ) {
+    return this.computeService.listMerchantNodes({
+      actorWalletAddress: user.address,
+      venueId,
+    });
+  }
+
+  @Put('/compute/nodes/:machineId')
+  async upsertMerchantComputeNode(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('machineId') machineId: string,
+    @Body() body: unknown,
+  ) {
+    const parsed = UpsertMerchantComputeNodeBody.safeParse(body);
+    if (!parsed.success) {
+      throw new HttpException({ message: '入力が不正です' }, HttpStatus.BAD_REQUEST);
+    }
+
+    return this.computeService.upsertMerchantNodeConfig({
+      actorWalletAddress: user.address,
+      machineId,
+      enabled: parsed.data.enabled,
+      pricePerHourMinor: parsed.data.pricePerHourMinor,
+      minBookingHours: parsed.data.minBookingHours,
+      maxBookingHours: parsed.data.maxBookingHours,
+      supportedTasks: parsed.data.supportedTasks,
+      availableWindows: parsed.data.availableWindows,
+    });
   }
 
   @Post('/disputes')

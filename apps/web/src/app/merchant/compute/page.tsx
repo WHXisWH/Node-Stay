@@ -195,7 +195,7 @@ function NodeCard({
         {/* 稼働可能曜日 */}
         <div>
           <div className="text-xs text-slate-400 mb-2">稼働可能時間帯</div>
-          {node.availableWindows.length === 0 ? (
+          {!node.configured || node.availableWindows.length === 0 ? (
             <span className="text-xs text-slate-400 italic">未設定</span>
           ) : (
             <AvailabilityDisplay windows={node.availableWindows} />
@@ -245,7 +245,7 @@ function NodeEditModal({
   onSave,
   saving,
 }: {
-  node: ManagedNode | null; // null = 新規登録
+  node: ManagedNode;
   onClose: () => void;
   onSave: (data: Partial<ManagedNode>) => void;
   saving: boolean;
@@ -299,8 +299,6 @@ function NodeEditModal({
     });
   };
 
-  const isNew = node === null;
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 overflow-y-auto"
@@ -314,7 +312,7 @@ function NodeEditModal({
         {/* モーダルヘッダー */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h2 className="text-lg font-bold text-slate-900">
-            {isNew ? '新規ノードを登録する' : `${node?.seatLabel} の設定を編集`}
+            {`${node.seatLabel} の設定を編集`}
           </h2>
           <button
             onClick={onClose}
@@ -327,18 +325,6 @@ function NodeEditModal({
         </div>
 
         <div className="px-6 py-5 flex flex-col gap-6 max-h-[70vh] overflow-y-auto">
-          {/* 新規登録時：ノード前提説明 */}
-          {isNew && (
-            <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 text-sm text-brand-700">
-              <p className="font-semibold mb-1">📋 登録前の確認事項</p>
-              <ul className="flex flex-col gap-1 text-brand-600">
-                <li>• 最低スペック：GTX 1660以上 / 16GB RAM</li>
-                <li>• プラットフォームAgentソフトのインストールが必要</li>
-                <li>• ユーザー着席時はタスクを自動中断します</li>
-              </ul>
-            </div>
-          )}
-
           {/* 時間単価設定 */}
           <div>
             <label className="block text-sm font-semibold text-slate-700 mb-2">
@@ -501,6 +487,11 @@ function NodeEditModal({
               })()}
             </div>
           )}
+
+          <p className="text-xs text-slate-500 leading-relaxed">
+            設定保存後、マーケットに公開するにはノードを「有効」に切り替える必要があります。
+            なお、オンチェーン未登録のノードは有効化できません。
+          </p>
         </div>
 
         {/* モーダルフッター */}
@@ -519,7 +510,7 @@ function NodeEditModal({
                 保存中...
               </span>
             ) : (
-              isNew ? 'ノードを登録する' : '設定を保存する'
+              '設定を保存する'
             )}
           </button>
         </div>
@@ -592,9 +583,15 @@ export default function MerchantComputePage() {
     saving,
     saveSuccess,
     saveError,
+    loading,
     handleToggle,
     handleSave,
   } = useMerchantCompute();
+  const openEditor = () => {
+    const target = nodes.find((node) => !node.configured) ?? nodes[0];
+    if (!target) return;
+    setEditingNode(target);
+  };
 
   return (
     <>
@@ -632,13 +629,13 @@ export default function MerchantComputePage() {
             </div>
             {/* 新規ノード登録ボタン */}
             <button
-              onClick={() => setEditingNode(null)}
+              onClick={openEditor}
               className="btn-jpyc"
             >
               <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
               </svg>
-              新規ノードを登録
+              ノード設定を編集
             </button>
           </div>
         </div>
@@ -675,18 +672,23 @@ export default function MerchantComputePage() {
             </h2>
           </div>
 
-          {nodes.length === 0 ? (
+          {loading ? (
+            <div className="card p-16 text-center">
+              <h3 className="text-lg font-bold text-slate-700 mb-2">ノード情報を読み込み中...</h3>
+              <p className="text-slate-400 text-sm">しばらくお待ちください。</p>
+            </div>
+          ) : nodes.length === 0 ? (
             <div className="card p-16 text-center">
               <div className="text-5xl mb-4">🖥️</div>
               <h3 className="text-lg font-bold text-slate-700 mb-2">
                 まだノードが登録されていません
               </h3>
               <p className="text-slate-400 text-sm mb-6">
-                遊休PCをコンピュートノードとして登録し、JPYCで収益を得ましょう
+                先にマシン登録を完了してください。登録後、この画面で稼働曜日・価格を保存できます。
               </p>
-              <button onClick={() => setEditingNode(null)} className="btn-primary">
-                最初のノードを登録する
-              </button>
+              <Link href="/merchant/machines/register" className="btn-primary">
+                マシン登録へ進む
+              </Link>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -707,7 +709,7 @@ export default function MerchantComputePage() {
       </div>
 
       {/* ===== 編集/新規登録モーダル ===== */}
-      {editingNode !== undefined && (
+      {editingNode && (
         <NodeEditModal
           node={editingNode}
           onClose={() => setEditingNode(undefined)}

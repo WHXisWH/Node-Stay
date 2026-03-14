@@ -299,6 +299,85 @@ export class NodeStayClient {
     });
   }
 
+  async listMerchantComputeNodes(venueId?: string): Promise<Array<{
+    nodeId: string;
+    venueId: string;
+    seatId: string;
+    seatLabel: string;
+    status: 'IDLE' | 'OFFLINE' | 'COMPUTING' | 'RESERVED';
+    enabled: boolean;
+    configured: boolean;
+    machineId: string;
+    onchainTokenId: string | null;
+    pricePerHourMinor: number;
+    minBookingHours: number;
+    maxBookingHours: number;
+    supportedTasks: string[];
+    availableWindows: Array<{ dayOfWeek: number; startTime: string; endTime: string }>;
+    specs: {
+      cpuModel: string;
+      cpuCores: number;
+      gpuModel: string;
+      vram: number;
+      ram: number;
+    };
+    earnings: {
+      thisMonthMinor: number;
+      totalMinor: number;
+      completedJobs: number;
+      uptimePercent: number;
+    };
+  }>> {
+    const query = venueId ? `?venueId=${encodeURIComponent(venueId)}` : '';
+    return await this.json(`/v1/merchant/compute/nodes${query}`);
+  }
+
+  async upsertMerchantComputeNode(
+    machineId: string,
+    body: {
+      enabled: boolean;
+      pricePerHourMinor: number;
+      minBookingHours: number;
+      maxBookingHours: number;
+      supportedTasks: string[];
+      availableWindows: Array<{ dayOfWeek: number; startTime: string; endTime: string }>;
+    },
+  ): Promise<{
+    nodeId: string;
+    venueId: string;
+    seatId: string;
+    seatLabel: string;
+    status: 'IDLE' | 'OFFLINE' | 'COMPUTING' | 'RESERVED';
+    enabled: boolean;
+    configured: boolean;
+    machineId: string;
+    onchainTokenId: string | null;
+    pricePerHourMinor: number;
+    minBookingHours: number;
+    maxBookingHours: number;
+    supportedTasks: string[];
+    availableWindows: Array<{ dayOfWeek: number; startTime: string; endTime: string }>;
+    specs: {
+      cpuModel: string;
+      cpuCores: number;
+      gpuModel: string;
+      vram: number;
+      ram: number;
+    };
+    earnings: {
+      thisMonthMinor: number;
+      totalMinor: number;
+      completedJobs: number;
+      uptimePercent: number;
+    };
+  }> {
+    return await this.json(`/v1/merchant/compute/nodes/${encodeURIComponent(machineId)}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
+
   async createDispute(body: { venueId: string; reason: string }): Promise<{ disputeId: string; venueId: string; reason: string; status: string; createdAtIso: string }> {
     return await this.json('/v1/merchant/disputes', {
       method: 'POST',
@@ -334,6 +413,7 @@ export class NodeStayClient {
       machineId: string;
       venueId: string;
       machineClass: string;
+      localSerial: string | null;
       cpu: string | null;
       gpu: string | null;
       ramGb: number | null;
@@ -355,6 +435,7 @@ export class NodeStayClient {
     machineId: string;
     venueId: string;
     machineClass: string;
+    localSerial: string | null;
     cpu: string | null;
     gpu: string | null;
     ramGb: number | null;

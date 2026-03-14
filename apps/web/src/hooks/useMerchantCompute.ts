@@ -1,6 +1,6 @@
 /**
- * useMerchantCompute: 加盟店向けコンピュート設定の Controller。
- * ローカルのダミー追加は行わず、常に API 取得結果を表示する。
+ * useMerchantCompute: 加盟店向けコンピュート設定ロジック。
+ * API 実データのみを利用し、ノード設定（曜日/時間/価格/タスク）を機器単位で保存する。
  */
 
 'use client';
@@ -22,11 +22,6 @@ export interface UseMerchantComputeReturn {
   handleSave: (data: Partial<ManagedNode>) => Promise<void>;
 }
 
-function toUiStatus(status: string): ManagedNode['status'] {
-  if (status === 'ACTIVE') return 'IDLE';
-  return 'OFFLINE';
-}
-
 function parseSaveError(error: unknown): string {
   const fallback = '保存に失敗しました。時間をおいて再試行してください。';
   if (!(error instanceof Error)) return fallback;
@@ -38,7 +33,7 @@ function parseSaveError(error: unknown): string {
       const parsed = JSON.parse(raw.slice(jsonStart)) as { message?: string };
       if (parsed.message && parsed.message.trim()) return parsed.message;
     } catch {
-      // JSON でなければそのままメッセージを使う。
+      // JSON でなければそのまま下のフォールバックへ
     }
   }
   return raw || fallback;
@@ -56,11 +51,13 @@ export function useMerchantCompute(): UseMerchantComputeReturn {
 
   const loadNodes = useCallback(async () => {
     setLoading(true);
+    setSaveError(null);
     try {
       const client = createNodeStayClient();
       const merchantVenues = await client.listMyMerchantVenues().catch(() => []);
       const venues = merchantVenues.length > 0 ? merchantVenues : await client.listVenues();
       const venue = venues.find((v) => v.venueId === currentVenueId) ?? venues[0];
+
       if (!venue) {
         setVenueName('');
         setCurrentVenueId('');
@@ -70,52 +67,23 @@ export function useMerchantCompute(): UseMerchantComputeReturn {
 
       setVenueName(venue.name);
       setCurrentVenueId(venue.venueId);
-
-      const nodes = await client.listComputeNodes();
-      const venueNodes = nodes.filter((n) => n.venueId === venue.venueId);
+      const apiNodes = await client.listMerchantComputeNodes(venue.venueId);
       setNodes(
-        venueNodes.map((n) => {
-          const row = n as typeof n & {
-            machineClass?: string | null;
-            machineId?: string | null;
-            gpu?: string | null;
-            cpu?: string | null;
-            ramGb?: number | null;
-            maxDurationMinutes?: number | null;
-          };
-          const machineClass = row.machineClass ?? 'COMPUTE';
-          const machineId = row.machineId ?? '';
-          const maxBookingHours =
-            row.maxDurationMinutes && row.maxDurationMinutes > 0
-              ? Math.max(1, Math.floor(row.maxDurationMinutes / 60))
-              : 8;
-
-          return {
-          nodeId: n.nodeId,
-          seatId: n.seatId,
-          seatLabel: `${machineClass} - ${(machineId || n.seatId).slice(0, 8)}`,
-          specs: {
-            cpuModel: row.cpu ?? '',
-            cpuCores: 0,
-            gpuModel: row.gpu ?? '',
-            vram: 0,
-            ram: row.ramGb ?? 0,
-          },
-          status: n.status,
-          enabled: n.status !== 'OFFLINE',
-          pricePerHourMinor: n.pricePerHourMinor,
-          minBookingHours: 1,
-          maxBookingHours,
-          supportedTasks: ['GENERAL'],
-          availableWindows: [],
-          earnings: {
-            thisMonthMinor: 0,
-            totalMinor: 0,
-            completedJobs: 0,
-            uptimePercent: 0,
-          },
-        };
-        }),
+        apiNodes.map((node) => ({
+          nodeId: node.nodeId,
+          seatId: node.seatId,
+          seatLabel: node.seatLabel,
+          specs: node.specs,
+          status: node.status,
+          enabled: node.enabled,
+          configured: node.configured,
+          pricePerHourMinor: node.pricePerHourMinor,
+          minBookingHours: node.minBookingHours,
+          maxBookingHours: node.maxBookingHours,
+          supportedTasks: node.supportedTasks as ManagedNode['supportedTasks'],
+          availableWindows: node.availableWindows as ManagedNode['availableWindows'],
+          earnings: node.earnings,
+        })),
       );
     } catch {
       setNodes([]);
@@ -129,9 +97,17 @@ export function useMerchantCompute(): UseMerchantComputeReturn {
   }, [loadNodes]);
 
   const handleToggle = (nodeId: string) => {
-    const node = nodes.find((n) => n.nodeId === nodeId);
+    const node = nodes.find((item) => item.nodeId === nodeId);
     if (!node) return;
-    void handleSave({ enabled: !node.enabled });
+    void handleSave({
+      nodeId,
+      enabled: !node.enabled,
+      pricePerHourMinor: node.pricePerHourMinor,
+      minBookingHours: node.minBookingHours,
+      maxBookingHours: node.maxBookingHours,
+      supportedTasks: node.supportedTasks,
+      availableWindows: node.availableWindows,
+    });
   };
 
   const handleSave = async (data: Partial<ManagedNode>) => {
@@ -139,25 +115,25 @@ export function useMerchantCompute(): UseMerchantComputeReturn {
     setSaveError(null);
     let saved = false;
     try {
-      let venueId = currentVenueId;
-      if (!venueId) {
-        const client = createNodeStayClient();
-        const merchantVenues = await client.listMyMerchantVenues().catch(() => []);
-        const venues = merchantVenues.length > 0 ? merchantVenues : await client.listVenues();
-        venueId = venues[0]?.venueId ?? '';
-        if (venueId) setCurrentVenueId(venueId);
+      const targetNode =
+        (data.nodeId ? nodes.find((node) => node.nodeId === data.nodeId) : undefined)
+        ?? editingNode
+        ?? null;
+      if (!targetNode) {
+        throw new Error('対象ノードが見つかりません');
       }
 
-      if (!venueId) {
-        throw new Error('会場情報が見つかりません');
-      }
-
-      const targetEnabled = editingNode
-        ? (data.enabled ?? editingNode.enabled)
-        : (data.enabled ?? false);
+      const payload = {
+        enabled: data.enabled ?? targetNode.enabled,
+        pricePerHourMinor: Math.max(1, Math.round(data.pricePerHourMinor ?? targetNode.pricePerHourMinor)),
+        minBookingHours: Math.max(1, Math.round(data.minBookingHours ?? targetNode.minBookingHours)),
+        maxBookingHours: Math.max(1, Math.round(data.maxBookingHours ?? targetNode.maxBookingHours)),
+        supportedTasks: (data.supportedTasks ?? targetNode.supportedTasks) as string[],
+        availableWindows: data.availableWindows ?? targetNode.availableWindows,
+      };
 
       const client = createNodeStayClient();
-      await client.enableCompute(venueId, targetEnabled);
+      await client.upsertMerchantComputeNode(targetNode.nodeId, payload);
 
       await loadNodes();
       setSaveSuccess(true);

@@ -253,6 +253,7 @@ class MerchantServiceClass {
         },
         status: 'IDLE',
         enabled: m.status === 'ACTIVE',
+        configured: true,
         pricePerHourMinor: 100000,
         minBookingHours: 1,
         maxBookingHours: 8,

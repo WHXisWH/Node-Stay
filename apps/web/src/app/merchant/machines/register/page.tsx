@@ -121,6 +121,8 @@ export default function MachineRegisterPage() {
 
     try {
       const client = createNodeStayClient();
+      // 管理名が未入力のときでも表示が崩れないよう、localSerial に最低限の表示名を保存する
+      const persistedLocalSerial = form.localSerial.trim() || form.label.trim();
       await client.registerMachine({
         venueId: form.venueId,
         machineClass: form.machineClass,
@@ -128,7 +130,7 @@ export default function MachineRegisterPage() {
         gpu: form.gpu.trim() || undefined,
         ramGb: Number(form.ramGb),
         storageGb: Number(form.storageGb),
-        localSerial: form.localSerial.trim() || undefined,
+        localSerial: persistedLocalSerial || undefined,
         metadataUri: form.metadataUri.trim() || undefined,
       });
       router.push('/merchant/machines?registered=1');

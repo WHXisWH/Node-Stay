@@ -165,6 +165,7 @@ export interface ManagedNode {
   specs: { cpuModel: string; cpuCores: number; gpuModel: string; vram: number; ram: number };
   status: MerchantNodeStatus;
   enabled: boolean;
+  configured: boolean;
   pricePerHourMinor: number;
   minBookingHours: number;
   maxBookingHours: number;

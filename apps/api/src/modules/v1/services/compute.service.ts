@@ -6,6 +6,22 @@ import { UserService } from './user.service';
 import { BlockchainService } from '../../../blockchain/blockchain.service';
 import { FeatureFlagsService } from './featureFlags.service';
 
+type SupportedTask = 'ML_TRAINING' | 'RENDERING' | 'ZK_PROVING' | 'GENERAL';
+
+interface AvailableWindow {
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+}
+
+interface ComputeConfigMetadata {
+  version: 1;
+  minBookingHours: number;
+  maxBookingHours: number;
+  supportedTasks: SupportedTask[];
+  availableWindows: AvailableWindow[];
+}
+
 @Injectable()
 export class ComputeService {
   private readonly logger = new Logger(ComputeService.name);
@@ -20,6 +36,170 @@ export class ComputeService {
     private readonly blockchain: BlockchainService,
     private readonly flags: FeatureFlagsService,
   ) {}
+
+  private parseComputeConfigMetadata(metadataUri: string | null | undefined): ComputeConfigMetadata | null {
+    const raw = metadataUri?.trim();
+    if (!raw || !raw.startsWith('{')) return null;
+    try {
+      const parsed = JSON.parse(raw) as Partial<ComputeConfigMetadata> & {
+        availableWindows?: Array<{
+          dayOfWeek?: unknown;
+          startTime?: unknown;
+          endTime?: unknown;
+        }>;
+        supportedTasks?: unknown;
+      };
+      const minBookingHours = Number(parsed.minBookingHours);
+      const maxBookingHours = Number(parsed.maxBookingHours);
+      const supportedTasks = this.normalizeSupportedTasks(
+        Array.isArray(parsed.supportedTasks) ? parsed.supportedTasks : [],
+      );
+      const availableWindows = this.normalizeAvailableWindows(parsed.availableWindows ?? []);
+      return {
+        version: 1,
+        minBookingHours: Number.isFinite(minBookingHours) && minBookingHours > 0 ? minBookingHours : 1,
+        maxBookingHours:
+          Number.isFinite(maxBookingHours) && maxBookingHours > 0 ? maxBookingHours : 8,
+        supportedTasks,
+        availableWindows,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private normalizeSupportedTasks(tasks: unknown[]): SupportedTask[] {
+    const allowed: SupportedTask[] = ['ML_TRAINING', 'RENDERING', 'ZK_PROVING', 'GENERAL'];
+    const normalized = tasks
+      .filter((task): task is string => typeof task === 'string')
+      .map((task) => task.toUpperCase())
+      .filter((task): task is SupportedTask => allowed.includes(task as SupportedTask));
+    return normalized.length > 0 ? Array.from(new Set(normalized)) : ['GENERAL'];
+  }
+
+  private normalizeAvailableWindows(
+    windows: Array<{
+      dayOfWeek?: unknown;
+      startTime?: unknown;
+      endTime?: unknown;
+    }>,
+  ): AvailableWindow[] {
+    const timeRegex = /^\d{2}:\d{2}$/;
+    const normalized = windows
+      .map((window) => {
+        const day = Number(window.dayOfWeek);
+        const start = typeof window.startTime === 'string' ? window.startTime : '';
+        const end = typeof window.endTime === 'string' ? window.endTime : '';
+        if (!Number.isInteger(day) || day < 0 || day > 6) return null;
+        if (!timeRegex.test(start) || !timeRegex.test(end)) return null;
+        if (start >= end) return null;
+        return { dayOfWeek: day, startTime: start, endTime: end };
+      })
+      .filter((window): window is AvailableWindow => window !== null);
+
+    normalized.sort((a, b) => {
+      if (a.dayOfWeek !== b.dayOfWeek) return a.dayOfWeek - b.dayOfWeek;
+      if (a.startTime !== b.startTime) return a.startTime.localeCompare(b.startTime);
+      return a.endTime.localeCompare(b.endTime);
+    });
+
+    // 同一曜日・同一時間帯は重複排除する
+    const deduped: AvailableWindow[] = [];
+    for (const window of normalized) {
+      const exists = deduped.some(
+        (item) =>
+          item.dayOfWeek === window.dayOfWeek
+          && item.startTime === window.startTime
+          && item.endTime === window.endTime,
+      );
+      if (!exists) deduped.push(window);
+    }
+    return deduped;
+  }
+
+  private toComputeMetadataJson(input: {
+    minBookingHours: number;
+    maxBookingHours: number;
+    supportedTasks: SupportedTask[];
+    availableWindows: AvailableWindow[];
+  }): string {
+    return JSON.stringify({
+      version: 1,
+      minBookingHours: input.minBookingHours,
+      maxBookingHours: input.maxBookingHours,
+      supportedTasks: input.supportedTasks,
+      availableWindows: input.availableWindows,
+    } satisfies ComputeConfigMetadata);
+  }
+
+  private deriveComputeTier(machineClass: string, gpu: string | null): string {
+    const cls = machineClass.toUpperCase();
+    if (cls === 'GPU') {
+      const gpuName = (gpu ?? '').toUpperCase();
+      if (gpuName.includes('4090') || gpuName.includes('A100')) return 'GPU_HIGH';
+      return 'GPU_STANDARD';
+    }
+    if (cls === 'CPU') return 'CPU_HIGH';
+    return 'GENERAL';
+  }
+
+  private mapMachineRowToMerchantNode(row: {
+    id: string;
+    venueId: string;
+    machineId: string;
+    machineClass: string;
+    status: string;
+    cpu: string | null;
+    gpu: string | null;
+    ramGb: number | null;
+    localSerial: string | null;
+    onchainTokenId: string | null;
+    computeProducts: Array<{
+      id: string;
+      status: string;
+      priceJpyc: string;
+      maxDurationMinutes: number;
+      metadataUri: string | null;
+    }>;
+  }) {
+    const product = row.computeProducts[0] ?? null;
+    const config = this.parseComputeConfigMetadata(product?.metadataUri);
+    const enabled = product?.status === 'ACTIVE';
+    const maxBookingHours =
+      config?.maxBookingHours
+      ?? (product && product.maxDurationMinutes > 0 ? Math.max(1, Math.floor(product.maxDurationMinutes / 60)) : 8);
+    const minBookingHours = config?.minBookingHours ?? Math.min(maxBookingHours, 1);
+
+    return {
+      nodeId: row.id,
+      venueId: row.venueId,
+      seatId: row.localSerial ?? row.id.slice(0, 8),
+      seatLabel: `${row.machineClass} - ${(row.machineId || row.id).slice(0, 8)}`,
+      status: row.status === 'ACTIVE' && enabled ? 'IDLE' : 'OFFLINE',
+      enabled,
+      configured: !!product,
+      machineId: row.machineId,
+      onchainTokenId: row.onchainTokenId,
+      pricePerHourMinor: product ? Number(product.priceJpyc) * 100 : 0,
+      minBookingHours,
+      maxBookingHours,
+      supportedTasks: config?.supportedTasks ?? ['GENERAL'],
+      availableWindows: config?.availableWindows ?? [],
+      specs: {
+        cpuModel: row.cpu ?? '',
+        cpuCores: 0,
+        gpuModel: row.gpu ?? '',
+        vram: 0,
+        ram: row.ramGb ?? 0,
+      },
+      earnings: {
+        thisMonthMinor: 0,
+        totalMinor: 0,
+        completedJobs: 0,
+        uptimePercent: 0,
+      },
+    };
+  }
 
   private requireWalletAddress(wallet: string | null | undefined, label: string): string {
     const normalized = wallet?.trim() ?? '';
@@ -191,6 +371,7 @@ export class ComputeService {
             id: true,
             priceJpyc: true,
             maxDurationMinutes: true,
+            metadataUri: true,
           },
         },
       },
@@ -199,9 +380,16 @@ export class ComputeService {
     return rows.map((m) => {
       const product = m.computeProducts[0];
       if (!product) return null;
-      const nodeId = product?.id ?? m.id;
+      const config = this.parseComputeConfigMetadata(product.metadataUri);
+      const nodeId = m.id;
       const status = m.status === 'ACTIVE' ? 'IDLE' : 'OFFLINE';
       const pricePerHourMinor = product ? Number(product.priceJpyc || '0') * 100 : 0;
+      const maxBookingHours =
+        config?.maxBookingHours
+        ?? (product.maxDurationMinutes > 0 ? Math.max(1, Math.floor(product.maxDurationMinutes / 60)) : 24);
+      const minBookingHours =
+        config?.minBookingHours
+        ?? Math.min(maxBookingHours, 1);
 
       return {
         nodeId,
@@ -217,6 +405,10 @@ export class ComputeService {
         cpu: m.cpu,
         ramGb: m.ramGb,
         maxDurationMinutes: product?.maxDurationMinutes ?? null,
+        minBookingHours,
+        maxBookingHours,
+        supportedTasks: config?.supportedTasks ?? ['GENERAL'],
+        availableWindows: config?.availableWindows ?? [],
         venueName: m.venue?.name ?? null,
         address: m.venue?.address ?? null,
       };
@@ -436,6 +628,212 @@ export class ComputeService {
         data: { status: 'CANCELLED', onchainTxHash: txHash, endedAt: new Date() },
       });
     });
+  }
+
+  async listMerchantNodes(input: { actorWalletAddress: string; venueId?: string }) {
+    const actorWallet = this.requireWalletAddress(input.actorWalletAddress, 'ユーザー');
+    const actorUserId = await this.userService.findOrCreateByWallet(actorWallet);
+
+    const accessibleVenues = await this.prisma.venue.findMany({
+      where: {
+        status: 'ACTIVE',
+        merchant: {
+          OR: [
+            { ownerUserId: actorUserId },
+            { ownerUserId: null },
+          ],
+        },
+      },
+      select: { id: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (accessibleVenues.length === 0) return [];
+
+    const targetVenueId = input.venueId?.trim() || accessibleVenues[0].id;
+    const allowedVenueIds = new Set(accessibleVenues.map((venue) => venue.id));
+    if (!allowedVenueIds.has(targetVenueId)) {
+      throw new HttpException(
+        { message: 'この店舗のノード設定を参照する権限がありません' },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    const machines = await this.prisma.machine.findMany({
+      where: {
+        venueId: targetVenueId,
+        status: { not: 'DECOMMISSIONED' },
+      },
+      include: {
+        computeProducts: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            status: true,
+            priceJpyc: true,
+            maxDurationMinutes: true,
+            metadataUri: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return machines.map((machine) => this.mapMachineRowToMerchantNode(machine));
+  }
+
+  async upsertMerchantNodeConfig(input: {
+    actorWalletAddress: string;
+    machineId: string;
+    enabled: boolean;
+    pricePerHourMinor: number;
+    minBookingHours: number;
+    maxBookingHours: number;
+    supportedTasks: string[];
+    availableWindows: Array<{ dayOfWeek: number; startTime: string; endTime: string }>;
+  }) {
+    if (!Number.isInteger(input.pricePerHourMinor) || input.pricePerHourMinor <= 0) {
+      throw new HttpException(
+        { message: '時間単価（minor）は 1 以上の整数で指定してください' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (!Number.isInteger(input.minBookingHours) || input.minBookingHours <= 0) {
+      throw new HttpException(
+        { message: '最短予約時間は 1 以上の整数で指定してください' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (!Number.isInteger(input.maxBookingHours) || input.maxBookingHours <= 0) {
+      throw new HttpException(
+        { message: '最長予約時間は 1 以上の整数で指定してください' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+    if (input.maxBookingHours < input.minBookingHours) {
+      throw new HttpException(
+        { message: '最長予約時間は最短予約時間以上で指定してください' },
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const normalizedWindows = this.normalizeAvailableWindows(input.availableWindows);
+    if (input.enabled && normalizedWindows.length === 0) {
+      throw new HttpException(
+        { message: '有効化するには稼働可能時間帯を1件以上設定してください' },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    const normalizedTasks = this.normalizeSupportedTasks(input.supportedTasks);
+    const metadataJson = this.toComputeMetadataJson({
+      minBookingHours: input.minBookingHours,
+      maxBookingHours: input.maxBookingHours,
+      supportedTasks: normalizedTasks,
+      availableWindows: normalizedWindows,
+    });
+    const priceJpyc = Math.max(1, Math.round(input.pricePerHourMinor / 100)).toString();
+
+    const actorWallet = this.requireWalletAddress(input.actorWalletAddress, 'ユーザー');
+    const actorUserId = await this.userService.findOrCreateByWallet(actorWallet);
+
+    const machine = await this.prisma.machine.findUnique({
+      where: { id: input.machineId },
+      include: {
+        venue: {
+          select: {
+            merchant: {
+              select: {
+                ownerUserId: true,
+              },
+            },
+          },
+        },
+        computeProducts: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+          },
+        },
+      },
+    });
+    if (!machine) {
+      throw new HttpException({ message: 'マシンが見つかりません' }, HttpStatus.NOT_FOUND);
+    }
+    const ownerUserId = machine.venue?.merchant?.ownerUserId;
+    if (ownerUserId && ownerUserId !== actorUserId) {
+      throw new HttpException(
+        { message: 'このマシンを設定する権限がありません' },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    if (input.enabled && !machine.onchainTokenId) {
+      throw new HttpException(
+        { message: 'マシンがオンチェーン未登録のため有効化できません' },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+
+    const now = new Date();
+    const oneYearLater = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
+    const productStatus = input.enabled ? 'ACTIVE' : 'PAUSED';
+
+    const existingProductId = machine.computeProducts[0]?.id ?? null;
+    if (existingProductId) {
+      await this.prisma.computeProduct.update({
+        where: { id: existingProductId },
+        data: {
+          priceJpyc,
+          maxDurationMinutes: input.maxBookingHours * 60,
+          metadataUri: metadataJson,
+          status: productStatus,
+        },
+      });
+    } else {
+      await this.prisma.computeProduct.create({
+        data: {
+          machineId: machine.id,
+          computeTier: this.deriveComputeTier(machine.machineClass, machine.gpu),
+          startWindow: now,
+          endWindow: oneYearLater,
+          maxDurationMinutes: input.maxBookingHours * 60,
+          preemptible: true,
+          settlementPolicy: 'FIXED',
+          priceJpyc,
+          metadataUri: metadataJson,
+          status: productStatus,
+        },
+      });
+    }
+
+    await this.prisma.machine.update({
+      where: { id: machine.id },
+      data: {
+        status: input.enabled ? 'ACTIVE' : 'PAUSED',
+      },
+    });
+
+    const updatedMachine = await this.prisma.machine.findUnique({
+      where: { id: machine.id },
+      include: {
+        computeProducts: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            status: true,
+            priceJpyc: true,
+            maxDurationMinutes: true,
+            metadataUri: true,
+          },
+        },
+      },
+    });
+    if (!updatedMachine) {
+      throw new HttpException({ message: 'マシンが見つかりません' }, HttpStatus.NOT_FOUND);
+    }
+    return this.mapMachineRowToMerchantNode(updatedMachine);
   }
 
   // -----------------------------------------------------------------------

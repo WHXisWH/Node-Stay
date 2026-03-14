@@ -2,6 +2,7 @@ import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { MachineRegistryContractService } from '../../../blockchain/machine-registry.contract.service';
 import crypto from 'node:crypto';
+import { FeatureFlagsService } from './featureFlags.service';
 
 // MachineClass 文字列 → enum インデックスのマップ（コントラクトの MachineClass enum と対応）
 const MACHINE_CLASS_INDEX: Record<string, number> = {
@@ -18,6 +19,7 @@ export class MachineService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly registryContract: MachineRegistryContractService,
+    private readonly flags: FeatureFlagsService,
   ) {}
 
   // -----------------------------------------------------------------------
@@ -35,14 +37,41 @@ export class MachineService {
     ownerWallet?: string;
     metadataUri?: string;
   }) {
-    // オンチェーン登録前の暫定 machineId（登録完了後にチェーンの machineId で上書きする）
-    const seed = `${input.venueId}:${input.machineClass}:${input.localSerial ?? ''}:${Date.now()}`;
-    const provisionalMachineId = '0x' + crypto.createHash('sha256').update(seed).digest('hex');
+    // まずオンチェーン登録し、成功した場合のみ DB に確定登録する。
+    // strict モードでは失敗時に即エラーを返し、未上鎖の疑似データを残さない。
+    const venueIdHash = '0x' + crypto.createHash('sha256').update(input.venueId).digest('hex');
+    const specHash = '0x' + crypto.createHash('sha256')
+      .update(`${input.machineClass}:${input.cpu ?? ''}:${input.gpu ?? ''}:${input.ramGb ?? 0}`)
+      .digest('hex');
 
-    const machine = await this.prisma.machine.create({
+    const onchain = await this.registryContract.registerMachine({
+      venueIdHash,
+      machineClass: MACHINE_CLASS_INDEX[input.machineClass] ?? 0,
+      specHash,
+      metadataUri: input.metadataUri ?? '',
+    });
+
+    if (!onchain && this.flags.strictOnchainModeEnabled()) {
+      throw new HttpException(
+        { message: 'マシンのオンチェーン登録に失敗しました' },
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+
+    const seed = `${input.venueId}:${input.machineClass}:${input.localSerial ?? ''}:${Date.now()}`;
+    const fallbackMachineId = '0x' + crypto.createHash('sha256').update(seed).digest('hex');
+    if (!onchain) {
+      this.logger.warn('[machine.register] strict=false のためオフチェーン登録として保存します');
+    } else {
+      this.logger.log(
+        `オンチェーン登録成功: machineId=${onchain.machineId} tokenId=${onchain.tokenId} txHash=${onchain.txHash}`,
+      );
+    }
+
+    return this.prisma.machine.create({
       data: {
         venueId: input.venueId,
-        machineId: provisionalMachineId,
+        machineId: onchain?.machineId ?? fallbackMachineId,
         machineClass: input.machineClass,
         cpu: input.cpu ?? null,
         gpu: input.gpu ?? null,
@@ -51,41 +80,11 @@ export class MachineService {
         localSerial: input.localSerial ?? null,
         ownerWallet: input.ownerWallet ?? null,
         metadataUri: input.metadataUri ?? null,
-        status: 'REGISTERED',
+        status: onchain ? 'ACTIVE' : 'REGISTERED',
+        onchainTokenId: onchain?.tokenId ?? null,
+        onchainTxHash: onchain?.txHash ?? null,
       },
     });
-
-    // オンチェーン登録を非同期で試みる（失敗してもオフライン動作を継続）
-    const venue = await this.prisma.venue.findUnique({ where: { id: input.venueId } });
-    const venueIdHash = '0x' + crypto.createHash('sha256').update(input.venueId).digest('hex');
-    const specHash = '0x' + crypto.createHash('sha256')
-      .update(`${input.machineClass}:${input.cpu ?? ''}:${input.gpu ?? ''}:${input.ramGb ?? 0}`)
-      .digest('hex');
-
-    this.registryContract.registerMachine({
-      venueIdHash,
-      machineClass: MACHINE_CLASS_INDEX[input.machineClass] ?? 0,
-      specHash,
-      metadataUri: input.metadataUri ?? '',
-    }).then((result) => {
-      if (result) {
-        this.logger.log(
-          `オンチェーン登録成功: machineId=${result.machineId} tokenId=${result.tokenId} txHash=${result.txHash}`,
-        );
-        // チェーン側 machineId / tokenId を即時反映し、リスナー遅延時も整合性を保つ
-        return this.prisma.machine.update({
-          where: { id: machine.id },
-          data: {
-            machineId: result.machineId,
-            onchainTokenId: result.tokenId,
-            onchainTxHash: result.txHash,
-            status: 'ACTIVE',
-          },
-        });
-      }
-    }).catch((e) => this.logger.error(`オンチェーン登録後処理失敗: ${e}`));
-
-    return machine;
   }
 
   async list(filter: { venueId?: string; status?: string }) {
@@ -99,6 +98,7 @@ export class MachineService {
         machineId: true,
         venueId: true,
         machineClass: true,
+        localSerial: true,
         cpu: true,
         gpu: true,
         ramGb: true,

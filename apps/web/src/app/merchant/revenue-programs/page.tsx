@@ -26,8 +26,10 @@ interface ProgramRow {
 interface MachineRow {
   id: string;
   machineId: string;
+  localSerial: string | null;
   machineClass: string;
   status: string;
+  onchainTokenId: string | null;
   localLabel: string;
 }
 
@@ -77,7 +79,8 @@ export default function MerchantRevenueProgramsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [apiMachines, apiPrograms] = await Promise.all([
+      const [merchantVenues, apiMachines, apiPrograms] = await Promise.all([
+        client.listMyMerchantVenues().catch(() => []),
         client.listMachines(),
         client.listRevenuePrograms(),
       ]);
@@ -85,14 +88,21 @@ export default function MerchantRevenueProgramsPage() {
       const machineRows: MachineRow[] = apiMachines.map((m) => ({
         id: m.id,
         machineId: m.machineId,
+        localSerial: m.localSerial ?? null,
         machineClass: m.machineClass,
         status: m.status,
-        localLabel: `${m.machineClass} / ${m.machineId.slice(0, 10)}...`,
+        onchainTokenId: m.onchainTokenId,
+        localLabel: (m.localSerial && m.localSerial.trim().length > 0)
+          ? m.localSerial
+          : `${m.machineClass} / ${m.machineId.slice(0, 10)}...`,
       }));
 
       setMachines(machineRows);
       if (!machineId && machineRows.length > 0) {
         setMachineId(machineRows[0].id);
+      }
+      if (!merchantId && merchantVenues.length > 0) {
+        setMerchantId(merchantVenues[0].merchantId);
       }
 
       setPrograms(apiPrograms);
@@ -101,7 +111,7 @@ export default function MerchantRevenueProgramsPage() {
     } finally {
       setLoading(false);
     }
-  }, [client, machineId]);
+  }, [client, machineId, merchantId]);
 
   useEffect(() => {
     void load();
@@ -109,11 +119,11 @@ export default function MerchantRevenueProgramsPage() {
 
   const createProgram = useCallback(async () => {
     if (!merchantId.trim()) {
-      setError('merchantId を入力してください');
+      setError('加盟店IDを入力してください');
       return;
     }
     if (!machineId) {
-      setError('machine を選択してください');
+      setError('マシンを選択してください');
       return;
     }
 
@@ -143,7 +153,7 @@ export default function MerchantRevenueProgramsPage() {
         endAt: endDate.toISOString(),
         investors,
       });
-      setSuccess(`Program 作成完了: ${created.programId}`);
+      setSuccess(`プログラム作成完了: ${created.programId}`);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : '作成に失敗しました');
@@ -157,7 +167,7 @@ export default function MerchantRevenueProgramsPage() {
     setSuccess(null);
     try {
       const res = await client.approveRevenueProgram(programId, {});
-      setSuccess(`Program 承認完了: ${res.programId}`);
+      setSuccess(`プログラム承認完了: ${res.programId}`);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : '承認に失敗しました');
@@ -190,7 +200,7 @@ export default function MerchantRevenueProgramsPage() {
 
           <div className="flex items-end justify-between gap-4 flex-wrap">
             <div>
-              <p className="text-slate-400 text-sm mb-1">Merchant Revenue Program</p>
+              <p className="text-slate-400 text-sm mb-1">加盟店向け収益プログラム</p>
               <h1 className="text-3xl font-extrabold text-white">収益権プログラム管理</h1>
             </div>
             <Link href="/merchant/dashboard" className="btn-secondary py-2 px-4 text-sm">
@@ -210,22 +220,22 @@ export default function MerchantRevenueProgramsPage() {
         <div className="card p-6">
           <h2 className="text-base font-bold text-slate-900 mb-4">新規プログラム作成</h2>
           <p className="text-xs text-slate-500 mb-5">
-            investors は 1 行 1 件で `userId,amount` を入力してください。例: `1111-...-aaaa,1000`
+            投資家情報は 1 行 1 件で `userId,amount` を入力してください。例: `1111-...-aaaa,1000`
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <label className="text-sm text-slate-700">
-              Merchant ID
+              加盟店ID
               <input
                 value={merchantId}
                 onChange={(e) => setMerchantId(e.target.value)}
                 className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2"
-                placeholder="merchant UUID"
+                placeholder="加盟店UUID"
               />
             </label>
 
             <label className="text-sm text-slate-700">
-              Machine
+              マシン
               <select
                 value={machineId}
                 onChange={(e) => setMachineId(e.target.value)}
@@ -233,13 +243,15 @@ export default function MerchantRevenueProgramsPage() {
               >
                 <option value="">選択してください</option>
                 {machines.map((m) => (
-                  <option key={m.id} value={m.id}>{m.localLabel} ({m.status})</option>
+                  <option key={m.id} value={m.id} disabled={!m.onchainTokenId}>
+                    {m.localLabel} ({m.status}{m.onchainTokenId ? '' : ' / オンチェーン未登録'})
+                  </option>
                 ))}
               </select>
             </label>
 
             <label className="text-sm text-slate-700">
-              shareBps
+              取り分（bps）
               <input
                 type="number"
                 min={1}
@@ -251,7 +263,7 @@ export default function MerchantRevenueProgramsPage() {
             </label>
 
             <label className="text-sm text-slate-700">
-              Revenue Scope
+              収益対象
               <select
                 value={revenueScope}
                 onChange={(e) => setRevenueScope(e.target.value as RevenueScope)}
@@ -264,7 +276,7 @@ export default function MerchantRevenueProgramsPage() {
             </label>
 
             <label className="text-sm text-slate-700">
-              Settlement Cycle
+              精算サイクル
               <select
                 value={settlementCycle}
                 onChange={(e) => setSettlementCycle(e.target.value as SettlementCycle)}
@@ -277,7 +289,7 @@ export default function MerchantRevenueProgramsPage() {
             </label>
 
             <label className="text-sm text-slate-700">
-              Start
+              開始日時
               <input
                 type="datetime-local"
                 value={startAt}
@@ -287,7 +299,7 @@ export default function MerchantRevenueProgramsPage() {
             </label>
 
             <label className="text-sm text-slate-700">
-              End
+              終了日時
               <input
                 type="datetime-local"
                 value={endAt}
@@ -298,7 +310,7 @@ export default function MerchantRevenueProgramsPage() {
           </div>
 
           <label className="block text-sm text-slate-700 mt-4">
-            Investors (userId,amount)
+            投資家（userId,amount）
             <textarea
               value={investorText}
               onChange={(e) => setInvestorText(e.target.value)}

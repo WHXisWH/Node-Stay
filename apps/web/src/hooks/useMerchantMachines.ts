@@ -1,6 +1,6 @@
 /**
- * useMerchantMachines: 加盟店マシン管理 Controller（SPEC §8）。
- * マシン一覧・ステータス変更・フィルタを保持；View は表示のみ。
+ * useMerchantMachines: 加盟店マシン管理ロジック（SPEC §8）。
+ * マシン一覧・ステータス変更・フィルタ状態を保持し、表示層へ渡す。
  */
 
 'use client';
@@ -15,6 +15,7 @@ export interface MachineListItem {
   id: string;
   machineId: string;
   machineClass: MachineClass;
+  localSerial: string | null;
   label: string;
   cpu: string;
   gpu: string | null;
@@ -66,7 +67,10 @@ export function useMerchantMachines(): UseMerchantMachinesReturn {
           id: m.id,
           machineId: m.machineId,
           machineClass: m.machineClass as MachineClass,
-          label: `${m.machineClass} - ${m.machineId?.slice(0, 8) ?? ''}`,
+          localSerial: m.localSerial ?? null,
+          label: (m.localSerial && m.localSerial.trim().length > 0)
+            ? m.localSerial
+            : `${m.machineClass} - ${m.machineId?.slice(0, 8) ?? ''}`,
           cpu: m.cpu ?? '',
           gpu: m.gpu,
           ramGb: m.ramGb ?? 0,
