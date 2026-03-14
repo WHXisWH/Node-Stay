@@ -24,6 +24,7 @@ export class ComputeRightContractService {
    */
   async mintComputeRight(input: {
     to: string;               // 購入者ウォレットアドレス
+    merchantWallet: string;   // 商家受取ウォレットアドレス
     nodeId: string;           // bytes32 (keccak256(offchainMachineId))
     durationSeconds: bigint;  // 購入した利用時間（秒）
     priceJpyc: bigint;        // 支払い JPYC 量（18 decimals）
@@ -37,6 +38,7 @@ export class ComputeRightContractService {
     try {
       const tx = await c.mintComputeRight(
         input.to,
+        input.merchantWallet,
         input.nodeId as `0x${string}`,
         input.durationSeconds,
         input.priceJpyc,

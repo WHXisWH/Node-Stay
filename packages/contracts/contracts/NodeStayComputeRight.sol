@@ -40,6 +40,7 @@ contract NodeStayComputeRight is ERC721, Ownable, ReentrancyGuard {
     /// @notice 算力権のオンチェーンデータ
     struct ComputeData {
         bytes32  nodeId;            // keccak256(offchainMachineId)
+        address  merchantWallet;    // ジョブ完了時の商家受取先
         uint256  durationSeconds;   // 購入した利用時間（秒）
         uint256  priceJpyc;         // 支払い済み JPYC 量（18 decimals）
         uint256  startedAt;         // 実行開始タイムスタンプ（0 = 未開始）
@@ -82,7 +83,14 @@ contract NodeStayComputeRight is ERC721, Ownable, ReentrancyGuard {
     // -----------------------------------------------------------------------
 
     /// @notice 算力権 mint 時
-    event ComputeRightMinted(address indexed to, uint256 indexed tokenId, bytes32 nodeId, uint256 durationSeconds, uint256 priceJpyc);
+    event ComputeRightMinted(
+        address indexed to,
+        address indexed merchantWallet,
+        uint256 indexed tokenId,
+        bytes32 nodeId,
+        uint256 durationSeconds,
+        uint256 priceJpyc
+    );
 
     /// @notice ジョブ開始時
     event JobStarted(uint256 indexed tokenId, uint256 startedAt);
@@ -145,16 +153,19 @@ contract NodeStayComputeRight is ERC721, Ownable, ReentrancyGuard {
 
     /// @notice 算力権を mint して購入者に付与する（Operator のみ）
     /// @param to 購入者アドレス
+    /// @param merchantWallet ジョブ精算時の商家受取ウォレット
     /// @param nodeId keccak256(offchainMachineId)
     /// @param durationSeconds 購入時間（秒）
     /// @param priceJpyc 支払い JPYC 量
     /// @return tokenId 新規発行したトークン ID
     function mintComputeRight(
         address to,
+        address merchantWallet,
         bytes32 nodeId,
         uint256 durationSeconds,
         uint256 priceJpyc
     ) external onlyOperator returns (uint256 tokenId) {
+        if (to == address(0) || merchantWallet == address(0)) revert ZeroAddress();
         if (durationSeconds == 0) revert ZeroDuration();
         if (priceJpyc == 0) revert ZeroPrice();
 
@@ -163,6 +174,7 @@ contract NodeStayComputeRight is ERC721, Ownable, ReentrancyGuard {
 
         _computeData[tokenId] = ComputeData({
             nodeId:          nodeId,
+            merchantWallet:  merchantWallet,
             durationSeconds: durationSeconds,
             priceJpyc:       priceJpyc,
             startedAt:       0,
@@ -170,7 +182,7 @@ contract NodeStayComputeRight is ERC721, Ownable, ReentrancyGuard {
             status:          ComputeStatus.ISSUED
         });
 
-        emit ComputeRightMinted(to, tokenId, nodeId, durationSeconds, priceJpyc);
+        emit ComputeRightMinted(to, merchantWallet, tokenId, nodeId, durationSeconds, priceJpyc);
     }
 
     // -----------------------------------------------------------------------
@@ -202,8 +214,8 @@ contract NodeStayComputeRight is ERC721, Ownable, ReentrancyGuard {
         uint256 fee = data.priceJpyc * PLATFORM_FEE_BPS / 10000;
         uint256 nodeOwnerAmount = data.priceJpyc - fee;
 
-        address tokenOwner = ownerOf(tokenId);
-        jpyc.transfer(tokenOwner, nodeOwnerAmount);
+        address merchantWallet = data.merchantWallet;
+        jpyc.transfer(merchantWallet, nodeOwnerAmount);
         jpyc.transfer(platformFeeRecipient, fee);
 
         emit JobCompleted(tokenId, block.timestamp);
@@ -230,8 +242,8 @@ contract NodeStayComputeRight is ERC721, Ownable, ReentrancyGuard {
         uint256 fee = usedAmount * PLATFORM_FEE_BPS / 10000;
         uint256 nodeOwnerAmount = usedAmount - fee;
 
-        address tokenOwner = ownerOf(tokenId);
-        if (nodeOwnerAmount > 0) jpyc.transfer(tokenOwner, nodeOwnerAmount);
+        address merchantWallet = data.merchantWallet;
+        if (nodeOwnerAmount > 0) jpyc.transfer(merchantWallet, nodeOwnerAmount);
         if (fee > 0)             jpyc.transfer(platformFeeRecipient, fee);
         if (refundAmount > 0)    jpyc.transfer(buyer, refundAmount);
 

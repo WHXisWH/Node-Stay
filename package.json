@@ -21,6 +21,7 @@
     "backfill:machines:onchain": "node scripts/backfill-machine-onchain.mjs",
     "backfill:machines:register-onchain": "node scripts/register-machine-onchain-backfill.mjs",
     "backfill:merchants:treasury": "node scripts/backfill-merchant-treasury.mjs",
+    "close:legacy:compute": "node scripts/close-legacy-compute-orders.mjs",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down"
   },

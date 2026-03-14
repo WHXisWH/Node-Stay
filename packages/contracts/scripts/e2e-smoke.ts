@@ -122,7 +122,7 @@ async function main() {
   const computeNodeId = ethers.keccak256(ethers.toUtf8Bytes('node:smoke-compute'));
   await waitAndRecord(
     'compute-mint',
-    computeRight.mintComputeRight(alice.address, computeNodeId, 3600, COMPUTE_PRICE),
+    computeRight.mintComputeRight(alice.address, deployer.address, computeNodeId, 3600, COMPUTE_PRICE),
     txs,
   );
   const computeTokenId = (await computeRight.nextTokenId()) - 1n;

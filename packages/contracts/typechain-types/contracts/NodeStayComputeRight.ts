@@ -26,6 +26,7 @@ import type {
 export declare namespace NodeStayComputeRight {
   export type ComputeDataStruct = {
     nodeId: BytesLike;
+    merchantWallet: AddressLike;
     durationSeconds: BigNumberish;
     priceJpyc: BigNumberish;
     startedAt: BigNumberish;
@@ -35,6 +36,7 @@ export declare namespace NodeStayComputeRight {
 
   export type ComputeDataStructOutput = [
     nodeId: string,
+    merchantWallet: string,
     durationSeconds: bigint,
     priceJpyc: bigint,
     startedAt: bigint,
@@ -42,6 +44,7 @@ export declare namespace NodeStayComputeRight {
     status: bigint
   ] & {
     nodeId: string;
+    merchantWallet: string;
     durationSeconds: bigint;
     priceJpyc: bigint;
     startedAt: bigint;
@@ -135,7 +138,7 @@ export interface NodeStayComputeRightInterface extends Interface {
   encodeFunctionData(functionFragment: "jpyc", values?: undefined): string;
   encodeFunctionData(
     functionFragment: "mintComputeRight",
-    values: [AddressLike, BytesLike, BigNumberish, BigNumberish]
+    values: [AddressLike, AddressLike, BytesLike, BigNumberish, BigNumberish]
   ): string;
   encodeFunctionData(functionFragment: "name", values?: undefined): string;
   encodeFunctionData(
@@ -326,6 +329,7 @@ export namespace ApprovalForAllEvent {
 export namespace ComputeRightMintedEvent {
   export type InputTuple = [
     to: AddressLike,
+    merchantWallet: AddressLike,
     tokenId: BigNumberish,
     nodeId: BytesLike,
     durationSeconds: BigNumberish,
@@ -333,6 +337,7 @@ export namespace ComputeRightMintedEvent {
   ];
   export type OutputTuple = [
     to: string,
+    merchantWallet: string,
     tokenId: bigint,
     nodeId: string,
     durationSeconds: bigint,
@@ -340,6 +345,7 @@ export namespace ComputeRightMintedEvent {
   ];
   export interface OutputObject {
     to: string;
+    merchantWallet: string;
     tokenId: bigint;
     nodeId: string;
     durationSeconds: bigint;
@@ -520,6 +526,7 @@ export interface NodeStayComputeRight extends BaseContract {
   mintComputeRight: TypedContractMethod<
     [
       to: AddressLike,
+      merchantWallet: AddressLike,
       nodeId: BytesLike,
       durationSeconds: BigNumberish,
       priceJpyc: BigNumberish
@@ -660,6 +667,7 @@ export interface NodeStayComputeRight extends BaseContract {
   ): TypedContractMethod<
     [
       to: AddressLike,
+      merchantWallet: AddressLike,
       nodeId: BytesLike,
       durationSeconds: BigNumberish,
       priceJpyc: BigNumberish
@@ -823,7 +831,7 @@ export interface NodeStayComputeRight extends BaseContract {
       ApprovalForAllEvent.OutputObject
     >;
 
-    "ComputeRightMinted(address,uint256,bytes32,uint256,uint256)": TypedContractEvent<
+    "ComputeRightMinted(address,address,uint256,bytes32,uint256,uint256)": TypedContractEvent<
       ComputeRightMintedEvent.InputTuple,
       ComputeRightMintedEvent.OutputTuple,
       ComputeRightMintedEvent.OutputObject

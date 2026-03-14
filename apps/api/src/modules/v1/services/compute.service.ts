@@ -219,6 +219,78 @@ export class ComputeService {
     return ethers.id(machineId) as `0x${string}`;
   }
 
+  /**
+   * 商家受取ウォレットを正規化する。
+   * 空値・ゼロアドレス・不正形式は null として扱う。
+   */
+  private normalizeMerchantWallet(raw: string | null | undefined): string | null {
+    const value = raw?.trim() ?? '';
+    if (!value || !ethers.isAddress(value) || value === ethers.ZeroAddress) return null;
+    return ethers.getAddress(value);
+  }
+
+  /**
+   * 算力ジョブの精算先（商家ウォレット）を解決する。
+   * 優先順位:
+   * 1) machine.ownerWallet
+   * 2) merchant.treasuryWallet
+   * 3) merchant.ownerUserId に紐づく users.walletAddress
+   */
+  private async resolveMerchantWalletForMachine(machineId: string): Promise<string> {
+    const machine = await this.prisma.machine.findUnique({
+      where: { id: machineId },
+      select: {
+        ownerWallet: true,
+        venue: {
+          select: {
+            merchant: {
+              select: {
+                ownerUserId: true,
+                treasuryWallet: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!machine) {
+      throw new HttpException(
+        { message: 'マシンが見つかりません' },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+
+    const merchant = machine.venue?.merchant;
+    let ownerUserWallet: string | null = null;
+    if (merchant?.ownerUserId) {
+      const ownerUser = await this.prisma.user.findUnique({
+        where: { id: merchant.ownerUserId },
+        select: { walletAddress: true },
+      });
+      ownerUserWallet = ownerUser?.walletAddress ?? null;
+    }
+
+    const candidates = [
+      machine.ownerWallet,
+      merchant?.treasuryWallet ?? null,
+      ownerUserWallet,
+    ];
+
+    for (const candidate of candidates) {
+      const normalized = this.normalizeMerchantWallet(candidate);
+      if (normalized) return normalized;
+    }
+
+    throw new HttpException(
+      {
+        message:
+          '商家受取ウォレットが未設定です（machine.ownerWallet / merchant.treasuryWallet を設定してください）',
+      },
+      HttpStatus.UNPROCESSABLE_ENTITY,
+    );
+  }
+
   private parseSchedulerPayload(
     schedulerRef: string | null | undefined,
   ): {
@@ -518,13 +590,15 @@ export class ComputeService {
 
     const durationSeconds = BigInt(input.estimatedHours * 3600);
     const nodeId = this.normalizeNodeId(product.machine.machineId);
+    const merchantWallet = await this.resolveMerchantWalletForMachine(product.machineId);
 
     this.logger.log(
-      `[compute.submit] start buyer=${buyerWallet} nodeId=${nodeId} estimatedHours=${input.estimatedHours} totalWei=${totalPriceWei.toString()} paymentTx=${input.paymentTxHash ?? 'none'}`,
+      `[compute.submit] start buyer=${buyerWallet} merchant=${merchantWallet} nodeId=${nodeId} estimatedHours=${input.estimatedHours} totalWei=${totalPriceWei.toString()} paymentTx=${input.paymentTxHash ?? 'none'}`,
     );
 
     const onchain = await this.computeRightContract.mintComputeRight({
       to: buyerWallet,
+      merchantWallet,
       nodeId,
       durationSeconds,
       priceJpyc: totalPriceWei,
