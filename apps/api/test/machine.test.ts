@@ -3,13 +3,14 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/modules/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { createTestToken, authHeader } from './helpers/auth.helper';
+import { createTestToken, authHeader, getTestWallet, getTestWallet2 } from './helpers/auth.helper';
 
 describe('Machine API', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let venueId: string;
   let token: string;
+  let token2: string;
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
@@ -17,10 +18,36 @@ describe('Machine API', () => {
     await app.init();
     prisma = app.get(PrismaService);
     token = createTestToken();
+    token2 = createTestToken(getTestWallet2());
 
-    const venue = await prisma.venue.findFirst();
+    const venue = await prisma.venue.findFirst({
+      include: { merchant: true },
+    });
     if (!venue) throw new Error('シード venue が存在しません');
+
+    const wallet = getTestWallet().toLowerCase();
+    let user = await prisma.user.findFirst({
+      where: {
+        walletAddress: {
+          equals: wallet,
+          mode: 'insensitive',
+        },
+      },
+      select: { id: true },
+    });
+    if (!user) {
+      user = await prisma.user.create({
+        data: { walletAddress: wallet, status: 'ACTIVE' },
+        select: { id: true },
+      });
+    }
+
+    await prisma.merchant.update({
+      where: { id: venue.merchantId },
+      data: { ownerUserId: user.id },
+    });
     venueId = venue.id;
+
   }, 30000);
 
   afterAll(async () => {
@@ -56,7 +83,22 @@ describe('Machine API', () => {
     expect(res.body.machineId).toBeDefined();
     expect(res.body.machineId).toMatch(/^0x[a-f0-9]{64}$/);
     expect(res.body.onchainMachineId).toMatch(/^0x[a-f0-9]{64}$/);
-    expect(res.body.status).toBe('REGISTERED');
+    expect(['REGISTERED', 'ACTIVE']).toContain(res.body.status);
+    expect(res.body).toHaveProperty('onchainTokenId');
+    expect(res.body).toHaveProperty('onchainTxHash');
+  });
+
+  it('POST /v1/machines — 他店舗への登録は 403', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/v1/machines')
+      .set(...authHeader(token2))
+      .send({
+        venueId,
+        machineClass: 'GPU',
+        gpu: 'RTX 4090',
+      });
+
+    expect(res.status).toBe(403);
   });
 
   it('POST /v1/machines — body 不正は 400', async () => {

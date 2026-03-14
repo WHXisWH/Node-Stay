@@ -408,7 +408,14 @@ export class NodeStayClient {
     storageGb?: number;
     localSerial?: string;
     metadataUri?: string;
-  }): Promise<{ id: string; machineId: string; onchainMachineId?: string; status: string }> {
+  }): Promise<{
+    id: string;
+    machineId: string;
+    onchainMachineId?: string;
+    status: string;
+    onchainTokenId?: string | null;
+    onchainTxHash?: string | null;
+  }> {
     return await this.json('/v1/machines', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },

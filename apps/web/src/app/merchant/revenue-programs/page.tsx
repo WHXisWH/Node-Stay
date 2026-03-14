@@ -83,6 +83,12 @@ export default function MerchantRevenueProgramsPage() {
         client.listMyMerchantVenues().catch(() => []),
         client.listRevenuePrograms(),
       ]);
+      if (merchantVenues.length === 0) {
+        setMachines([]);
+        setPrograms(apiPrograms);
+        setError('加盟店店舗が見つかりません。先に店舗を作成してください。');
+        return;
+      }
       const machineRowsByVenue = await Promise.all(
         merchantVenues.map((venue) => client.listMachines({ venueId: venue.venueId })),
       );
@@ -109,6 +115,9 @@ export default function MerchantRevenueProgramsPage() {
       }
 
       setPrograms(apiPrograms);
+      if (machineRows.length === 0) {
+        setError('利用可能なマシンがありません。先にマシン登録を完了してください。');
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'ロードに失敗しました');
     } finally {
@@ -251,6 +260,15 @@ export default function MerchantRevenueProgramsPage() {
                   </option>
                 ))}
               </select>
+              {machines.length === 0 && (
+                <span className="mt-1 block text-xs text-amber-600">
+                  マシンが未登録です。先に
+                  <Link href="/merchant/machines/register?returnTo=revenue" className="underline ml-1 mr-1">
+                    マシン登録
+                  </Link>
+                  を実行してください。
+                </span>
+              )}
             </label>
 
             <label className="text-sm text-slate-700">

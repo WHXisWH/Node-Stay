@@ -30,6 +30,7 @@ export class MachineService {
   // -----------------------------------------------------------------------
 
   async register(input: {
+    actorWalletAddress: string;
     venueId: string;
     machineClass: string;
     cpu?: string;
@@ -40,6 +41,49 @@ export class MachineService {
     ownerWallet?: string;
     metadataUri?: string;
   }) {
+    const actorWallet = input.actorWalletAddress.trim();
+    if (!ethers.isAddress(actorWallet) || actorWallet === ethers.ZeroAddress) {
+      throw new HttpException(
+        { message: 'ユーザーのウォレットアドレスが不正です' },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    const normalizedActorWallet = ethers.getAddress(actorWallet);
+    const actorUserId = await this.userService.findOrCreateByWallet(normalizedActorWallet);
+
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: input.venueId },
+      select: {
+        id: true,
+        merchant: {
+          select: {
+            id: true,
+            ownerUserId: true,
+          },
+        },
+      },
+    });
+    if (!venue) {
+      throw new HttpException(
+        { message: '店舗が見つかりません' },
+        HttpStatus.NOT_FOUND,
+      );
+    }
+    const merchant = venue.merchant;
+    if (merchant.ownerUserId && merchant.ownerUserId !== actorUserId) {
+      throw new HttpException(
+        { message: 'この店舗にマシンを登録する権限がありません' },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    // owner 未紐付けの初回登録時は、このユーザーを owner として確定する。
+    if (!merchant.ownerUserId) {
+      await this.prisma.merchant.update({
+        where: { id: merchant.id },
+        data: { ownerUserId: actorUserId },
+      });
+    }
+
     // まずオンチェーン登録し、成功した場合のみ DB に確定登録する。
     // strict モードでは失敗時に即エラーを返し、未上鎖の疑似データを残さない。
     const venueIdHash = '0x' + crypto.createHash('sha256').update(input.venueId).digest('hex');

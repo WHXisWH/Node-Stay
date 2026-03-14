@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createNodeStayClient } from '../../../../services/nodestay';
+import { NodeStayApiError } from '@nodestay/api-client';
 
 type MachineClass = 'GPU' | 'CPU' | 'PREMIUM' | 'STANDARD';
 
@@ -80,10 +81,12 @@ export default function MachineRegisterPage() {
       setLoadingVenues(true);
       try {
         const client = createNodeStayClient();
-        const merchantVenues = await client.listMyMerchantVenues().catch(() => []);
-        const rows = merchantVenues.length > 0 ? merchantVenues : await client.listVenues();
-        const options = rows.map((v) => ({ venueId: v.venueId, name: v.name }));
+        const merchantVenues = await client.listMyMerchantVenues();
+        const options = merchantVenues.map((v) => ({ venueId: v.venueId, name: v.name }));
         setVenues(options);
+        if (options.length === 0) {
+          setError('登録可能な店舗がありません。先に加盟店ダッシュボードで店舗を作成してください。');
+        }
         setForm((prev) => ({
           ...prev,
           venueId: prev.venueId || options[0]?.venueId || '',
@@ -113,6 +116,10 @@ export default function MachineRegisterPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (venues.length === 0) {
+      setError('登録可能な店舗がありません。先に店舗を作成してください。');
+      return;
+    }
     const err = validate();
     if (err) { setError(err); return; }
 
@@ -123,7 +130,7 @@ export default function MachineRegisterPage() {
       const client = createNodeStayClient();
       // 管理名が未入力のときでも表示が崩れないよう、localSerial に最低限の表示名を保存する
       const persistedLocalSerial = form.localSerial.trim() || form.label.trim();
-      await client.registerMachine({
+      const result = await client.registerMachine({
         venueId: form.venueId,
         machineClass: form.machineClass,
         cpu: form.cpu.trim(),
@@ -133,20 +140,33 @@ export default function MachineRegisterPage() {
         localSerial: persistedLocalSerial || undefined,
         metadataUri: form.metadataUri.trim() || undefined,
       });
-      router.push('/merchant/machines?registered=1');
+      if (result.onchainTxHash && result.onchainTokenId) {
+        const returnTo = typeof window === 'undefined'
+          ? ''
+          : new URLSearchParams(window.location.search).get('returnTo')?.trim() ?? '';
+        if (returnTo === 'compute') {
+          router.push('/merchant/compute?registered=1');
+          return;
+        }
+        if (returnTo === 'revenue') {
+          router.push('/merchant/revenue-programs?registeredMachine=1');
+          return;
+        }
+        router.push('/merchant/machines?registered=1');
+        return;
+      }
+      setError('オンチェーン登録が未完了のため一覧に確定反映できません。設定を確認して再実行してください。');
     } catch (submitError: unknown) {
-      const msg = submitError instanceof Error ? submitError.message : '';
-      const jsonStart = msg.indexOf('{');
-      if (jsonStart >= 0) {
-        try {
-          const parsed = JSON.parse(msg.slice(jsonStart)) as { message?: string };
-          if (parsed.message) {
-            setError(parsed.message);
+      if (submitError instanceof NodeStayApiError) {
+        if (submitError.bodyJson && typeof submitError.bodyJson === 'object') {
+          const message = (submitError.bodyJson as { message?: unknown }).message;
+          if (typeof message === 'string' && message.trim()) {
+            setError(message);
             return;
           }
-        } catch {
-          // JSON 解析に失敗した場合は共通メッセージを表示する
         }
+        setError(`登録に失敗しました（${submitError.status}）`);
+        return;
       }
       setError('登録に失敗しました。しばらく経ってから再試行してください。');
     } finally {
@@ -171,7 +191,7 @@ export default function MachineRegisterPage() {
             <span className="text-slate-300">マシン登録</span>
           </nav>
           <h1 className="text-3xl font-extrabold text-white mb-2">マシン登録</h1>
-          <p className="text-slate-400">新しいマシンを登録して利用権の販売を開始します</p>
+          <p className="text-slate-400">算力ノード・収益権プログラムで利用するマシンを登録します</p>
         </div>
       </div>
 
@@ -316,7 +336,7 @@ export default function MachineRegisterPage() {
 
             <p className="text-xs text-slate-400 bg-white rounded-lg p-3 mb-5 leading-relaxed">
               ※ 登録後、マシンは NodeStay MachineRegistry コントラクトにオンチェーン記録されます。
-              ガス代（MATIC）が必要な場合があります。登録完了後に利用権商品を設定できます。
+              ガス代（MATIC）が必要な場合があります。登録完了後に算力設定・収益権プログラム設定へ進めます。
             </p>
 
             {/* ボタン群 */}

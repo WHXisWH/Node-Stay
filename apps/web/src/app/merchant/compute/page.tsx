@@ -4,6 +4,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useMerchantCompute } from '../../../hooks';
 import type { ManagedNode, AvailableWindow } from '../../../models/merchant.model';
 
@@ -612,6 +613,7 @@ function SetupGuide() {
 
 // ===== ページコンポーネント =====
 export default function MerchantComputePage() {
+  const router = useRouter();
   const {
     venues,
     currentVenueId,
@@ -631,6 +633,10 @@ export default function MerchantComputePage() {
     handleRemove,
   } = useMerchantCompute();
   const openEditor = () => {
+    if (nodes.length === 0) {
+      router.push('/merchant/machines/register?returnTo=compute');
+      return;
+    }
     const target = nodes.find((node) => !node.configured) ?? nodes[0];
     if (!target) return;
     setEditingNode(target);
@@ -678,7 +684,7 @@ export default function MerchantComputePage() {
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
               </svg>
-              ノード設定を編集
+              {nodes.length === 0 ? '先にマシンを登録' : 'ノード設定を編集'}
             </button>
           </div>
         </div>
@@ -743,13 +749,15 @@ export default function MerchantComputePage() {
             <div className="card p-16 text-center">
               <div className="text-5xl mb-4">🖥️</div>
               <h3 className="text-lg font-bold text-slate-700 mb-2">
-                まだノードが登録されていません
+                {venues.length === 0 ? '店舗がまだ作成されていません' : 'まだノードが登録されていません'}
               </h3>
               <p className="text-slate-400 text-sm mb-6">
-                先にマシン登録を完了してください。登録後、この画面で稼働曜日・価格を保存できます。
+                {venues.length === 0
+                  ? '先に加盟店ダッシュボードで店舗を作成してください。'
+                  : '先にマシン登録を完了してください。登録後、この画面で稼働曜日・価格を保存できます。'}
               </p>
-              <Link href="/merchant/machines/register" className="btn-primary">
-                マシン登録へ進む
+              <Link href={venues.length === 0 ? '/merchant/dashboard' : '/merchant/machines/register'} className="btn-primary">
+                {venues.length === 0 ? '加盟店ダッシュボードへ' : 'マシン登録へ進む'}
               </Link>
             </div>
           ) : (

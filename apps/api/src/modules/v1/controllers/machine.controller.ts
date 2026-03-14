@@ -26,17 +26,22 @@ export class MachineController {
 
   // POST /v1/machines — 機器登録
   @Post()
-  async register(@Body() body: unknown) {
+  async register(@CurrentUser() user: AuthenticatedUser, @Body() body: unknown) {
     const parsed = RegisterBody.safeParse(body);
     if (!parsed.success) throw new HttpException({ message: '入力が不正です' }, HttpStatus.BAD_REQUEST);
 
-    const m = await this.machine.register(parsed.data);
+    const m = await this.machine.register({
+      actorWalletAddress: user.address,
+      ...parsed.data,
+    });
     return {
       id: m.id,
       machineId: m.machineId,
       // 既存クライアント互換（将来的に削除予定）
       onchainMachineId: m.machineId,
       status: m.status,
+      onchainTokenId: m.onchainTokenId,
+      onchainTxHash: m.onchainTxHash,
     };
   }
 
