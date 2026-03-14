@@ -182,8 +182,9 @@ export class NodeStayClient {
     });
   }
 
-  async getBalance(): Promise<{ currency: 'JPYC'; balanceMinor: number; depositHeldMinor: number }> {
-    return await this.json('/v1/user/balance');
+  async getBalance(walletAddress?: string): Promise<{ currency: 'JPYC'; balanceMinor: number; depositHeldMinor: number }> {
+    const query = walletAddress ? `?wallet=${encodeURIComponent(walletAddress)}` : '';
+    return await this.json(`/v1/user/balance${query}`);
   }
 
   async createVenueAsMerchant(input: {

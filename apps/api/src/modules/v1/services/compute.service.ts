@@ -172,6 +172,7 @@ export class ComputeService {
     const rows = await this.prisma.machine.findMany({
       where: {
         status: { in: ['REGISTERED', 'ACTIVE'] },
+        onchainTokenId: { not: null },
         ...(venueId ? { venueId } : {}),
         computeProducts: { some: { status: 'ACTIVE' } },
       },
@@ -245,7 +246,7 @@ export class ComputeService {
       throw new HttpException({ message: '算力ノードが現在利用できません' }, HttpStatus.CONFLICT);
     }
     if (!product.machine.onchainTokenId) {
-      throw new HttpException({ message: 'GPUがオンチェーン未登録です' }, HttpStatus.UNPROCESSABLE_ENTITY);
+      throw new HttpException({ message: 'ノードがオンチェーン未登録です' }, HttpStatus.UNPROCESSABLE_ENTITY);
     }
     if (!product.machine.machineId) {
       throw new HttpException({ message: 'ノード識別子が不正です' }, HttpStatus.UNPROCESSABLE_ENTITY);

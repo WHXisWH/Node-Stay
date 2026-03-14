@@ -14,14 +14,17 @@ import { resolve } from 'node:path';
 const TARGET_TREASURY_WALLET = '0x71BB0f1EBa26c41Ef6703ec30A249Bb0F293d6c8';
 
 function loadEnvFiles() {
-  const candidates = [
-    resolve(process.cwd(), '.env'),
-    resolve(process.cwd(), 'apps/api/.env'),
-  ];
-  for (const path of candidates) {
-    if (existsSync(path)) {
-      loadDotenv({ path, override: false });
-    }
+  const rootEnv = resolve(process.cwd(), '.env');
+  const apiEnv = resolve(process.cwd(), 'apps/api/.env');
+  const hasPresetDatabaseUrl = Boolean(process.env.DATABASE_URL?.trim());
+
+  if (!hasPresetDatabaseUrl && existsSync(rootEnv)) {
+    loadDotenv({ path: rootEnv, override: false });
+  }
+  // apps/api/.env を root より優先する。
+  // ただし外部から DATABASE_URL を渡している場合は上書きしない。
+  if (!hasPresetDatabaseUrl && existsSync(apiEnv)) {
+    loadDotenv({ path: apiEnv, override: true });
   }
 }
 

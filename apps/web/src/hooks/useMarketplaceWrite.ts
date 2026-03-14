@@ -5,9 +5,9 @@
 
 import { useState } from 'react';
 import { useAccount, useWriteContract } from 'wagmi';
-import { parseUnits } from 'viem';
+import { createPublicClient, http, isAddress, parseUnits } from 'viem';
 
-import { CONTRACT_ADDRESSES } from '../services/config';
+import { CHAIN_CONFIG, CONTRACT_ADDRESSES } from '../services/config';
 import { useUserStore } from '../stores/user.store';
 import { useAaTransaction } from './useAaTransaction';
 import { resolveTxMode } from './txMode';
@@ -23,11 +23,21 @@ const MARKETPLACE_ADDRESS = CONTRACT_ADDRESSES.marketplace as `0x${string}`;
 const USAGE_RIGHT_ADDRESS = CONTRACT_ADDRESSES.usageRight as `0x${string}`;
 const JPYC_ADDRESS = CONTRACT_ADDRESSES.jpycToken as `0x${string}`;
 
+const publicClient = createPublicClient({
+  transport: http(CHAIN_CONFIG.rpcUrl),
+});
+
 // ERC-721 approve ABI（minimum）
 const ERC721_APPROVE_ABI = [
   { name: 'approve', type: 'function', stateMutability: 'nonpayable',
     inputs: [{ name: 'to', type: 'address' }, { name: 'tokenId', type: 'uint256' }],
     outputs: [] },
+] as const;
+
+const ERC721_OWNER_OF_ABI = [
+  { name: 'ownerOf', type: 'function', stateMutability: 'view',
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    outputs: [{ name: 'owner', type: 'address' }] },
 ] as const;
 
 // ERC-20 approve ABI
@@ -56,27 +66,69 @@ function isConnectorNotConnectedError(error: unknown): boolean {
 export function useMarketplaceWrite() {
   const { writeContractAsync } = useWriteContract();
   const loginMethod = useUserStore((s) => s.loginMethod);
-  const { isConnected } = useAccount();
+  const aaWalletAddress = useUserStore((s) => s.aaWalletAddress);
+  const socialWalletAddress = useUserStore((s) => s.socialWalletAddress);
+  const authWalletAddress = useUserStore((s) => s.walletAddress);
+  const { address: connectedAddress, isConnected } = useAccount();
   const mode = resolveTxMode(loginMethod, isConnected);
   const { sendUserOp } = useAaTransaction();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const sameAddress = (a?: string | null, b?: string | null) =>
+    !!a && !!b && a.toLowerCase() === b.toLowerCase();
 
   // NFT 出品（approve → createListing）
   const listUsageRight = async (onchainTokenId: string, priceJpycMinor: string): Promise<string | null> => {
     setPending(true);
     setError(null);
     try {
+      const tokenId = BigInt(onchainTokenId);
+      const ownerOnChain = await publicClient.readContract({
+        address: USAGE_RIGHT_ADDRESS,
+        abi: ERC721_OWNER_OF_ABI,
+        functionName: 'ownerOf',
+        args: [tokenId],
+      }) as `0x${string}`;
+
+      // SNS 認証中でも owner が接続済みウォレットと一致する場合は wallet 経路を優先する。
+      const effectiveMode = mode === 'aa' && sameAddress(ownerOnChain, connectedAddress ?? null)
+        ? 'wallet'
+        : mode;
+
+      if (effectiveMode === 'aa') {
+        if (!aaWalletAddress || !isAddress(aaWalletAddress)) {
+          throw new Error('AAウォレットが未初期化です。右上メニューから AA ウォレットを初期化してください。');
+        }
+        if (!sameAddress(ownerOnChain, aaWalletAddress)) {
+          const ownerLabel = sameAddress(ownerOnChain, socialWalletAddress) || sameAddress(ownerOnChain, authWalletAddress)
+            ? 'EOA所有者'
+            : '別ウォレット';
+          throw new Error(
+            `この利用権の所有者は ${ownerOnChain}（${ownerLabel}）です。現在のAAウォレット ${aaWalletAddress} では出品できません。先にこの利用権を AA ウォレットへ譲渡してください。`,
+          );
+        }
+      } else {
+        if (!connectedAddress || !isAddress(connectedAddress)) {
+          throw new Error('ウォレット未接続のため出品できません。');
+        }
+        if (!sameAddress(ownerOnChain, connectedAddress)) {
+          throw new Error(
+            `この利用権の所有者は ${ownerOnChain} です。接続中ウォレット ${connectedAddress} では出品できません。`,
+          );
+        }
+      }
+
       const sendViaAa = async () => {
         const result = await sendUserOp([
           {
             to: USAGE_RIGHT_ADDRESS,
-            data: encodeUsageRightApprove(MARKETPLACE_ADDRESS, BigInt(onchainTokenId)),
+            data: encodeUsageRightApprove(MARKETPLACE_ADDRESS, tokenId),
             value: 0n,
           },
           {
             to: MARKETPLACE_ADDRESS,
-            data: encodeCreateListing(BigInt(onchainTokenId), BigInt(priceJpycMinor)),
+            data: encodeCreateListing(tokenId, BigInt(priceJpycMinor)),
             value: 0n,
           },
         ]);
@@ -86,7 +138,7 @@ export function useMarketplaceWrite() {
         return result.txHash;
       };
 
-      if (mode === 'aa') {
+      if (effectiveMode === 'aa') {
         return await sendViaAa();
       }
 
@@ -96,7 +148,7 @@ export function useMarketplaceWrite() {
           address: USAGE_RIGHT_ADDRESS,
           abi: ERC721_APPROVE_ABI,
           functionName: 'approve',
-          args: [MARKETPLACE_ADDRESS, BigInt(onchainTokenId)],
+          args: [MARKETPLACE_ADDRESS, tokenId],
         });
         // approve トランザクションの確定待機は省略可能（同一ブロック想定）
 
@@ -106,11 +158,11 @@ export function useMarketplaceWrite() {
           address: MARKETPLACE_ADDRESS,
           abi: MARKETPLACE_ABI,
           functionName: 'createListing',
-          args: [BigInt(onchainTokenId), priceWei],
+          args: [tokenId, priceWei],
         });
         return listTx;
       } catch (walletError) {
-        if (loginMethod !== 'wallet' && isConnectorNotConnectedError(walletError)) {
+        if (loginMethod !== 'wallet' && isConnectorNotConnectedError(walletError) && effectiveMode === 'wallet') {
           return await sendViaAa();
         }
         throw walletError;

@@ -8,13 +8,13 @@ import { useUserStore } from '../stores/user.store';
 import { createNodeStayClient } from './nodestay';
 
 export const UserService = {
-  async getBalance(client?: NodeStayClient): Promise<Balance> {
+  async getBalance(client?: NodeStayClient, walletAddress?: `0x${string}` | null): Promise<Balance> {
     const c = client ?? createNodeStayClient();
     const set = useUserStore.getState();
     set.setLoading(true);
     set.setError(null);
     try {
-      const data = await c.getBalance();
+      const data = await c.getBalance(walletAddress ?? undefined);
       const balance: Balance = {
         currency: data.currency,
         balanceMinor: data.balanceMinor,

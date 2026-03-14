@@ -49,11 +49,23 @@ export function useUserState(): UseUserStateReturn {
   const jwt                   = useUserStore((s) => s.jwt);
   const isAuthenticated       = useUserStore((s) => s.isAuthenticated);
   const loginMethod           = useUserStore((s) => s.loginMethod);
+  const setBalance            = useUserStore((s) => s.setBalance);
 
   useWalletSync();
 
+  const balanceWalletAddress: `0x${string}` | null = useMemo(() => {
+    // SNS ログイン時は残高表示を AA ウォレットに統一する。
+    if (loginMethod === 'social') return aaWalletAddress ?? null;
+    if (loginMethod === 'wallet') return walletAddress ?? connectedWalletAddress;
+    return walletAddress ?? connectedWalletAddress ?? null;
+  }, [aaWalletAddress, connectedWalletAddress, loginMethod, walletAddress]);
+
   useEffect(() => {
     if (!isAuthenticated || !jwt) return;
+    if (!balanceWalletAddress) {
+      setBalance(null);
+      return;
+    }
     let cancelled = false;
 
     const sleep = (ms: number) => new Promise<void>((resolve) => {
@@ -67,7 +79,7 @@ export function useUserState(): UseUserStateReturn {
         if (waitMs > 0) await sleep(waitMs);
         if (cancelled) return;
         try {
-          await UserService.getBalance();
+          await UserService.getBalance(undefined, balanceWalletAddress);
           return;
         } catch {
           // 次のリトライへ
@@ -79,7 +91,7 @@ export function useUserState(): UseUserStateReturn {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, jwt]);
+  }, [balanceWalletAddress, isAuthenticated, jwt, setBalance]);
 
   // ログイン方法に応じて表示用アドレスを切り替える
   const displayAddress: `0x${string}` | null = useMemo(() => {

@@ -1,7 +1,31 @@
 #!/usr/bin/env node
-import 'dotenv/config';
+import { parse as parseDotenv } from 'dotenv';
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import { ethers } from 'ethers';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+function loadEnvFiles() {
+  const rootEnv = resolve(process.cwd(), '.env');
+  const apiEnv = resolve(process.cwd(), 'apps/api/.env');
+  const merged = {};
+
+  // root -> apps/api の順で読み、apps/api を優先値にする。
+  if (existsSync(rootEnv)) {
+    Object.assign(merged, parseDotenv(readFileSync(rootEnv)));
+  }
+  if (existsSync(apiEnv)) {
+    Object.assign(merged, parseDotenv(readFileSync(apiEnv)));
+  }
+
+  // 既にプロセスへ注入済み（Render/Vercel 由来）の値を最優先にする。
+  for (const [key, value] of Object.entries(merged)) {
+    if (!process.env[key]?.trim()) {
+      process.env[key] = value;
+    }
+  }
+}
 
 /**
  * 機器のオンチェーン登録情報をトランザクションレシートから再同期するスクリプト。
@@ -11,6 +35,12 @@ import { ethers } from 'ethers';
  * 上記を組み合わせて machineId / onchainTokenId / status を整合させる。
  */
 async function main() {
+  loadEnvFiles();
+
+  if (!process.env.DATABASE_URL?.trim()) {
+    throw new Error('DATABASE_URL が未設定です（.env または apps/api/.env を確認してください）');
+  }
+
   const rpcUrl = process.env.AMOY_RPC_URL;
   if (!rpcUrl) {
     throw new Error('AMOY_RPC_URL が未設定です');
@@ -21,7 +51,10 @@ async function main() {
   }
 
   const provider = new ethers.JsonRpcProvider(rpcUrl);
-  const prisma = new PrismaClient();
+  const adapter = new PrismaPg({
+    connectionString: process.env.DATABASE_URL,
+  });
+  const prisma = new PrismaClient({ adapter });
   const iface = new ethers.Interface([
     'event MachineRegistered(bytes32 indexed machineId, address indexed owner, uint256 indexed tokenId)',
   ]);

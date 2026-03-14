@@ -102,11 +102,14 @@ export const useUserStore = create<UserState & UserActions>()(
     {
       name: 'nodestay-user',
       // jwt / walletAddress / loginMethod / activeSessionId を LocalStorage に永続化
-      // connectedWalletAddress / socialWalletAddress は揮発性のため永続化しない
+      // socialWalletAddress / aaWalletAddress も UI の再読み込み復元性向上のため永続化する
+      // connectedWalletAddress はブラウザウォレット接続状態に依存するため永続化しない
       partialize: (s) => ({
         jwt:             s.jwt,
         isAuthenticated: s.isAuthenticated,
         walletAddress:   s.walletAddress,
+        socialWalletAddress: s.socialWalletAddress,
+        aaWalletAddress: s.aaWalletAddress,
         loginMethod:     s.loginMethod,
         activeSessionId: s.activeSessionId,
       }),
