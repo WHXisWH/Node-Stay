@@ -1,7 +1,8 @@
-import { Body, Controller, Get, HttpException, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpException, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
 import { z } from 'zod';
 import { MachineService } from '../services/machine.service';
 import { Public } from '../decorators/public.decorator';
+import { CurrentUser, type AuthenticatedUser } from '../decorators/current-user.decorator';
 
 const RegisterBody = z.object({
   venueId:      z.string().min(1),
@@ -62,6 +63,17 @@ export class MachineController {
     if (!parsed.success) throw new HttpException({ message: '入力が不正です' }, HttpStatus.BAD_REQUEST);
 
     const m = await this.machine.updateStatus(id, parsed.data.status);
+    if (!m) throw new HttpException({ message: 'マシンが見つかりません' }, HttpStatus.NOT_FOUND);
+    return { id: m.id, machineId: m.machineId, status: m.status };
+  }
+
+  // DELETE /v1/machines/:id — マシン削除（廃止）
+  @Delete('/:id')
+  async remove(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    const m = await this.machine.remove(id, user.address);
     if (!m) throw new HttpException({ message: 'マシンが見つかりません' }, HttpStatus.NOT_FOUND);
     return { id: m.id, machineId: m.machineId, status: m.status };
   }

@@ -79,11 +79,14 @@ export default function MerchantRevenueProgramsPage() {
     setLoading(true);
     setError(null);
     try {
-      const [merchantVenues, apiMachines, apiPrograms] = await Promise.all([
+      const [merchantVenues, apiPrograms] = await Promise.all([
         client.listMyMerchantVenues().catch(() => []),
-        client.listMachines(),
         client.listRevenuePrograms(),
       ]);
+      const machineRowsByVenue = await Promise.all(
+        merchantVenues.map((venue) => client.listMachines({ venueId: venue.venueId })),
+      );
+      const apiMachines = machineRowsByVenue.flat();
 
       const machineRows: MachineRow[] = apiMachines.map((m) => ({
         id: m.id,
@@ -244,7 +247,7 @@ export default function MerchantRevenueProgramsPage() {
                 <option value="">選択してください</option>
                 {machines.map((m) => (
                   <option key={m.id} value={m.id} disabled={!m.onchainTokenId}>
-                    {m.localLabel} ({m.status}{m.onchainTokenId ? '' : ' / オンチェーン未登録'})
+                    {m.localLabel} ({m.status}{m.onchainTokenId ? ` / token #${m.onchainTokenId}` : ' / オンチェーン未登録'})
                   </option>
                 ))}
               </select>

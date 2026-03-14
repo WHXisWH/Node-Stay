@@ -242,8 +242,11 @@ class MerchantServiceClass {
       const venueName = venues.find((v) => v.venueId === targetVenueId)?.name ?? '';
       const nodes: ManagedNode[] = raw.map((m) => ({
         nodeId: m.id,
+        venueId: targetVenueId!,
+        venueName,
         seatId: m.machineId ?? '',
         seatLabel: `${m.machineClass} - ${m.machineId?.slice(0, 8) ?? ''}`,
+        onchainTokenId: m.onchainTokenId ?? null,
         specs: {
           cpuModel: m.cpu ?? '',
           cpuCores: 0,

@@ -3,6 +3,8 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { MachineRegistryContractService } from '../../../blockchain/machine-registry.contract.service';
 import crypto from 'node:crypto';
 import { FeatureFlagsService } from './featureFlags.service';
+import { UserService } from './user.service';
+import { ethers } from 'ethers';
 
 // MachineClass 文字列 → enum インデックスのマップ（コントラクトの MachineClass enum と対応）
 const MACHINE_CLASS_INDEX: Record<string, number> = {
@@ -20,6 +22,7 @@ export class MachineService {
     private readonly prisma: PrismaService,
     private readonly registryContract: MachineRegistryContractService,
     private readonly flags: FeatureFlagsService,
+    private readonly userService: UserService,
   ) {}
 
   // -----------------------------------------------------------------------
@@ -125,6 +128,64 @@ export class MachineService {
       where: { id },
       data: { status },
     });
+  }
+
+  async remove(id: string, actorWalletAddress: string) {
+    const rawWallet = actorWalletAddress.trim();
+    if (!ethers.isAddress(rawWallet) || rawWallet === ethers.ZeroAddress) {
+      throw new HttpException(
+        { message: 'ユーザーのウォレットアドレスが不正です' },
+        HttpStatus.UNPROCESSABLE_ENTITY,
+      );
+    }
+    const actorUserId = await this.userService.findOrCreateByWallet(ethers.getAddress(rawWallet));
+
+    const machine = await this.prisma.machine.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        machineId: true,
+        venue: {
+          select: {
+            merchant: {
+              select: {
+                ownerUserId: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!machine) return null;
+
+    const ownerUserId = machine.venue?.merchant?.ownerUserId;
+    if (ownerUserId && ownerUserId !== actorUserId) {
+      throw new HttpException(
+        { message: 'このマシンを削除する権限がありません' },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.computeProduct.updateMany({
+        where: {
+          machineId: machine.id,
+          status: { in: ['ACTIVE', 'PAUSED'] },
+        },
+        data: { status: 'PAUSED' },
+      });
+
+      await tx.machine.update({
+        where: { id: machine.id },
+        data: { status: 'DECOMMISSIONED' },
+      });
+    });
+
+    return {
+      id: machine.id,
+      machineId: machine.machineId,
+      status: 'DECOMMISSIONED',
+    };
   }
 
   // -----------------------------------------------------------------------

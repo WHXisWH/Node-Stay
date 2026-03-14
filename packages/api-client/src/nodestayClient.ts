@@ -467,6 +467,14 @@ export class NodeStayClient {
     });
   }
 
+  /** DELETE /v1/machines/:id — マシン削除（廃止） */
+  async deleteMachine(id: string): Promise<{ id: string; machineId: string; status: string }> {
+    return await this.json(`/v1/machines/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+    });
+  }
+
   // --- UsageRight API ---
 
   /** GET /v1/usage-rights — 利用権一覧 */

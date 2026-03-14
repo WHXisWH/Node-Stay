@@ -10,6 +10,9 @@ import { createNodeStayClient } from '../services/nodestay';
 import type { ManagedNode } from '../models/merchant.model';
 
 export interface UseMerchantComputeReturn {
+  venues: Array<{ venueId: string; name: string }>;
+  currentVenueId: string;
+  setCurrentVenueId: (venueId: string) => void;
   venueName: string;
   nodes: ManagedNode[];
   editingNode: ManagedNode | null | undefined;
@@ -43,6 +46,7 @@ function parseSaveError(error: unknown): string {
 }
 
 export function useMerchantCompute(): UseMerchantComputeReturn {
+  const [venues, setVenues] = useState<Array<{ venueId: string; name: string }>>([]);
   const [venueName, setVenueName] = useState('');
   const [nodes, setNodes] = useState<ManagedNode[]>([]);
   const [editingNode, setEditingNode] = useState<ManagedNode | null | undefined>(undefined);
@@ -60,9 +64,10 @@ export function useMerchantCompute(): UseMerchantComputeReturn {
     setRemoveError(null);
     try {
       const client = createNodeStayClient();
-      const merchantVenues = await client.listMyMerchantVenues().catch(() => []);
-      const venues = merchantVenues.length > 0 ? merchantVenues : await client.listVenues();
-      const venue = venues.find((v) => v.venueId === currentVenueId) ?? venues[0];
+      const merchantVenues = await client.listMyMerchantVenues();
+      const nextVenues = merchantVenues.map((venue) => ({ venueId: venue.venueId, name: venue.name }));
+      setVenues(nextVenues);
+      const venue = merchantVenues.find((v) => v.venueId === currentVenueId) ?? merchantVenues[0];
 
       if (!venue) {
         setVenueName('');
@@ -77,8 +82,11 @@ export function useMerchantCompute(): UseMerchantComputeReturn {
       setNodes(
         apiNodes.map((node) => ({
           nodeId: node.nodeId,
+          venueId: node.venueId,
+          venueName: venue.name,
           seatId: node.seatId,
           seatLabel: node.seatLabel,
+          onchainTokenId: node.onchainTokenId,
           specs: node.specs,
           status: node.status,
           enabled: node.enabled,
@@ -173,6 +181,9 @@ export function useMerchantCompute(): UseMerchantComputeReturn {
   };
 
   return {
+    venues,
+    currentVenueId,
+    setCurrentVenueId,
     venueName,
     nodes,
     editingNode,

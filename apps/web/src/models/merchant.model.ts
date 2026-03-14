@@ -160,8 +160,11 @@ export interface AvailableWindow {
 
 export interface ManagedNode {
   nodeId: string;
+  venueId: string;
+  venueName: string;
   seatId: string;
   seatLabel: string;
+  onchainTokenId: string | null;
   specs: { cpuModel: string; cpuCores: number; gpuModel: string; vram: number; ram: number };
   status: MerchantNodeStatus;
   enabled: boolean;

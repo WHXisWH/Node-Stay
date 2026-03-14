@@ -33,21 +33,30 @@ const NEXT_STATUS: Partial<Record<MachineStatus, MachineStatus[]>> = {
 // ===== フィルタータブ =====
 const FILTER_TABS: { key: 'all' | MachineStatus; label: string }[] = [
   { key: 'all',         label: 'すべて' },
+  { key: 'REGISTERED',  label: '登録済み' },
   { key: 'ACTIVE',      label: '稼働中' },
   { key: 'PAUSED',      label: '一時停止' },
   { key: 'MAINTENANCE', label: 'メンテ中' },
-  { key: 'REGISTERED',  label: '登録済み' },
 ];
+const EXTRA_FILTER_TABS: { key: 'onchain'; label: string }[] = [
+  { key: 'onchain', label: 'オンチェーン登録済み' },
+];
+
+const VENUE_ALL_VALUE = 'all';
 
 // ===== マシンカードコンポーネント =====
 function MachineCard({
   machine,
   onStatusChange,
+  onRemove,
   updating,
+  removing,
 }: {
   machine: MachineListItem;
   onStatusChange: (id: string, s: MachineStatus) => void;
+  onRemove: (id: string) => void;
   updating: boolean;
+  removing: boolean;
 }) {
   const classCfg = CLASS_CONFIG[machine.machineClass] ?? CLASS_CONFIG.STANDARD;
   const statusCfg = STATUS_CONFIG[machine.status];
@@ -69,6 +78,7 @@ function MachineCard({
             )}
           </div>
           <h3 className="text-base font-bold text-slate-900 truncate">{machine.label}</h3>
+          <p className="text-xs text-slate-400 mt-1 truncate">{machine.venueName}</p>
         </div>
         <span className={`${statusCfg.badgeClass} flex-shrink-0`}>
           <span className={`w-1.5 h-1.5 rounded-full ${statusCfg.dotColor} inline-block mr-1`} />
@@ -110,21 +120,30 @@ function MachineCard({
         </div>
       </div>
 
-      {/* ステータス変更ボタン */}
-      {nextStatuses.length > 0 && (
-        <div className="flex gap-2 pt-1">
-          {nextStatuses.map((s) => (
-            <button
-              key={s}
-              disabled={updating}
-              onClick={() => onStatusChange(machine.id, s)}
-              className="btn-secondary flex-1 py-2 text-xs"
-            >
-              {updating ? '更新中...' : STATUS_CONFIG[s].label + 'にする'}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* 操作ボタン */}
+      <div className="flex flex-col gap-2 pt-1">
+        {nextStatuses.length > 0 && (
+          <div className="flex gap-2">
+            {nextStatuses.map((s) => (
+              <button
+                key={s}
+                disabled={updating || removing}
+                onClick={() => onStatusChange(machine.id, s)}
+                className="btn-secondary flex-1 py-2 text-xs"
+              >
+                {updating ? '更新中...' : STATUS_CONFIG[s].label + 'にする'}
+              </button>
+            ))}
+          </div>
+        )}
+        <button
+          disabled={updating || removing}
+          onClick={() => onRemove(machine.id)}
+          className="w-full py-2 text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 rounded-xl border border-red-200 transition-colors disabled:opacity-50"
+        >
+          {removing ? '削除中...' : 'このマシンを削除'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -132,6 +151,9 @@ function MachineCard({
 // ===== ページコンポーネント =====
 export default function MerchantMachinesPage() {
   const {
+    venues,
+    selectedVenueId,
+    setSelectedVenueId,
     machines,
     filtered,
     filterStatus,
@@ -139,8 +161,17 @@ export default function MerchantMachinesPage() {
     searchQuery,
     setSearchQuery,
     updatingId,
+    removingId,
+    removeError,
     handleStatusChange,
+    handleRemove,
+    loading,
   } = useMerchantMachines();
+
+  const onDelete = (id: string) => {
+    if (!window.confirm('このマシンを削除します。よろしいですか？')) return;
+    void handleRemove(id);
+  };
 
   return (
     <>
@@ -173,15 +204,76 @@ export default function MerchantMachinesPage() {
 
       {/* メインコンテンツ */}
       <div className="container-main py-8">
+        {removeError && (
+          <div className="mb-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            {removeError}
+          </div>
+        )}
+
         {/* フィルター・検索 */}
-        <div className="flex flex-col sm:flex-row gap-4 mb-8">
+        <div className="flex flex-col gap-4 mb-8">
+          <div className="flex flex-col sm:flex-row gap-4">
+            {/* 店舗選択 */}
+            <div className="sm:w-72">
+              <select
+                value={selectedVenueId}
+                onChange={(e) => setSelectedVenueId(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 bg-white"
+              >
+                <option value={VENUE_ALL_VALUE}>すべての店舗</option>
+                {venues.map((venue) => (
+                  <option key={venue.venueId} value={venue.venueId}>
+                    {venue.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* 検索 */}
+            <div className="flex-1 relative">
+              <svg
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                width="16"
+                height="16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="text"
+                placeholder="マシン名・CPU・GPU・店舗名で検索..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 bg-white"
+              />
+            </div>
+          </div>
+
           {/* フィルタータブ */}
-          <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
+          <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit overflow-auto">
             {FILTER_TABS.map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setFilterStatus(tab.key)}
-                className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150 ${
+                className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150 whitespace-nowrap ${
+                  filterStatus === tab.key
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+            {EXTRA_FILTER_TABS.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setFilterStatus(tab.key)}
+                className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all duration-150 whitespace-nowrap ${
                   filterStatus === tab.key
                     ? 'bg-white text-slate-900 shadow-sm'
                     : 'text-slate-500 hover:text-slate-700'
@@ -191,34 +283,15 @@ export default function MerchantMachinesPage() {
               </button>
             ))}
           </div>
-
-          {/* 検索 */}
-          <div className="flex-1 relative">
-            <svg
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
-              width="16"
-              height="16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <input
-              type="text"
-              placeholder="マシン名・CPU・GPU で検索..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 bg-white"
-            />
-          </div>
         </div>
 
         {/* マシングリッド */}
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="text-center py-20">
+            <h3 className="text-lg font-bold text-slate-700 mb-2">読み込み中...</h3>
+            <p className="text-slate-400 text-sm">マシン情報を取得しています。</p>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="text-center py-20">
             <div className="text-5xl mb-4">🖥</div>
             <h3 className="text-lg font-bold text-slate-700 mb-2">マシンが見つかりません</h3>
@@ -238,7 +311,9 @@ export default function MerchantMachinesPage() {
                 key={machine.id}
                 machine={machine}
                 onStatusChange={handleStatusChange}
+                onRemove={onDelete}
                 updating={updatingId === machine.id}
+                removing={removingId === machine.id}
               />
             ))}
           </div>
