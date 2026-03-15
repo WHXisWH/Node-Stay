@@ -20,6 +20,14 @@ const PROTECTED_PREFIXES = [
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  if (pathname === '/merchant') {
+    return NextResponse.next();
+  }
+
+  if (pathname === '/merchant/login' || pathname.startsWith('/merchant/login/')) {
+    return NextResponse.next();
+  }
+
   if (pathname === '/merchant/register' || pathname.startsWith('/merchant/register/')) {
     return NextResponse.next();
   }

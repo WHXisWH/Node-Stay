@@ -38,6 +38,7 @@ export function LoginPromptBanner() {
       '/sessions': 'セッション',
       '/revenue': '収益ダッシュボード',
       '/merchant': '加盟店管理',
+      '/merchant/login': '加盟店ログイン',
       '/merchant/dashboard': '加盟店ダッシュボード',
       '/passes': 'マイ利用権',
     };

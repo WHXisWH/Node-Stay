@@ -307,7 +307,7 @@ export default function RevenueDashboardPage() {
             <div className="flex flex-col items-start sm:items-end gap-2">
               <p className="text-xs text-slate-400">投資家向け機能（保有 / 配当 / 二次流通）</p>
               <Link
-                href="/merchant/dashboard"
+                href="/merchant"
                 className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white text-sm font-semibold transition-colors"
               >
                 収益権プログラム発行（店舗向け）
