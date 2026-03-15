@@ -8,7 +8,7 @@ import { UserService } from '../services/user.service';
 import { ComputeService } from '../services/compute.service';
 
 const CreateVenueBody = z.object({
-  merchantId: z.string().min(1),
+  merchantId: z.string().min(1).optional(),
   name: z.string().min(1),
   address: z.string().optional(),
   city: z.string().optional(),
@@ -205,13 +205,57 @@ export class MerchantController {
   }
 
   @Post('/venues')
-  async createVenue(@CurrentUser() _user: AuthenticatedUser, @Body() body: unknown) {
+  async createVenue(@CurrentUser() user: AuthenticatedUser, @Body() body: unknown) {
     const parsed = CreateVenueBody.safeParse(body);
     if (!parsed.success) throw new HttpException({ message: '入力が不正です' }, HttpStatus.BAD_REQUEST);
 
+    const actingUserId = await this.userService.findOrCreateByWallet(user.address);
+    let merchantId = parsed.data.merchantId;
+
+    // merchantId が未指定なら、ログイン中ユーザーの加盟店を自動解決する
+    if (!merchantId) {
+      const myMerchant = await this.prisma.merchant.findFirst({
+        where: { ownerUserId: actingUserId },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      });
+
+      if (myMerchant) {
+        merchantId = myMerchant.id;
+      } else {
+        const createdMerchant = await this.prisma.merchant.create({
+          data: {
+            ownerUserId: actingUserId,
+            name: parsed.data.name,
+            status: 'ACTIVE',
+          },
+          select: { id: true },
+        });
+        merchantId = createdMerchant.id;
+      }
+    } else {
+      // merchantId 指定時はオーナー整合性を確認し、不正な紐付け作成を防止する
+      const target = await this.prisma.merchant.findUnique({
+        where: { id: merchantId },
+        select: { id: true, ownerUserId: true },
+      });
+      if (!target) {
+        throw new HttpException({ message: '加盟店が見つかりません' }, HttpStatus.NOT_FOUND);
+      }
+      if (target.ownerUserId && target.ownerUserId !== actingUserId) {
+        throw new HttpException({ message: 'この加盟店に店舗を作成する権限がありません' }, HttpStatus.FORBIDDEN);
+      }
+      if (!target.ownerUserId) {
+        await this.prisma.merchant.update({
+          where: { id: target.id },
+          data: { ownerUserId: actingUserId },
+        });
+      }
+    }
+
     const venue = await this.prisma.venue.create({
       data: {
-        merchantId: parsed.data.merchantId,
+        merchantId,
         name: parsed.data.name,
         address: parsed.data.address,
         city: parsed.data.city,
@@ -225,7 +269,12 @@ export class MerchantController {
       },
     });
 
-    return { venueId: venue.id };
+    return {
+      venueId: venue.id,
+      name: venue.name,
+      address: venue.address ?? '',
+      timezone: venue.timezone,
+    };
   }
 
   @Put('/venues/:venueId/products')
