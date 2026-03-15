@@ -33,6 +33,8 @@ export interface ActiveSession {
 export interface CheckoutResult {
   usedMinutes: number;
   chargesMinor: number;
+  baseMinor: number;
+  overtimeMinor: number;
 }
 
 export interface UseSessionPageReturn {
@@ -71,6 +73,8 @@ export function useSessionPage(): UseSessionPageReturn {
     machineId: string | null;
     checkedInAt: string;
     status: string;
+    baseDurationMinutes?: number;
+    basePriceMinor?: number;
   }): ActiveSession => {
     const status: SessionStatus =
       data.status === 'IN_USE'
@@ -86,18 +90,34 @@ export function useSessionPage(): UseSessionPageReturn {
       seatId: data.machineId ?? '-',
       seatType: 'BOOTH',
       checkInAt: data.checkedInAt,
-      baseDurationMinutes: 180,
-      basePriceMinor: 0,
+      baseDurationMinutes: data.baseDurationMinutes && data.baseDurationMinutes > 0 ? data.baseDurationMinutes : 180,
+      basePriceMinor: data.basePriceMinor ?? 0,
       status,
     };
   }, []);
 
   const completeCheckout = useCallback((payload: unknown) => {
-    const r = payload as { usedMinutes?: number; charges?: { baseMinor?: number }; chargesMinor?: number };
+    const r = payload as {
+      usedMinutes?: number;
+      charges?: {
+        baseMinor?: number;
+        overtimeMinor?: number;
+        amenitiesMinor?: number;
+        damageMinor?: number;
+      };
+      chargesMinor?: number;
+    };
+    const baseMinor = r.charges?.baseMinor ?? session?.basePriceMinor ?? 0;
+    const overtimeMinor = r.charges?.overtimeMinor ?? 0;
+    const amenitiesMinor = r.charges?.amenitiesMinor ?? 0;
+    const damageMinor = r.charges?.damageMinor ?? 0;
+    const totalMinor = baseMinor + overtimeMinor + amenitiesMinor + damageMinor;
     if (intervalRef.current) clearInterval(intervalRef.current);
     setCheckoutResult({
       usedMinutes: r.usedMinutes ?? Math.floor(elapsed / 60),
-      chargesMinor: r.charges?.baseMinor ?? r.chargesMinor ?? session?.basePriceMinor ?? 0,
+      chargesMinor: totalMinor || r.chargesMinor || 0,
+      baseMinor,
+      overtimeMinor,
     });
     setActiveSessionId(null);
     setSession(null);

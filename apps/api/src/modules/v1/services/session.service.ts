@@ -17,6 +17,7 @@ const ERC721_OWNER_OF_ABI = [
 @Injectable()
 export class SessionService {
   private readonly logger = new Logger(SessionService.name);
+  private static readonly WEI_PER_MINOR = 10n ** 16n; // 1 minor = 0.01 JPYC = 1e16 wei
 
   constructor(
     private readonly prisma: PrismaService,
@@ -138,6 +139,19 @@ export class SessionService {
       return ethers.getAddress(raw);
     }
     return null;
+  }
+
+  /**
+   * 超過料金（minor）を計算する。
+   * UI の暫定ルールと同一にし、計算差異を防ぐ。
+   */
+  private calculateOvertimeMinor(usedMinutes: number, baseDurationMinutes: number): number {
+    const overtimeMinutes = Math.max(0, usedMinutes - baseDurationMinutes);
+    if (overtimeMinutes <= 10) return 0;
+    if (overtimeMinutes <= 30) return Math.ceil((overtimeMinutes - 10) / 10) * 10000;
+    if (overtimeMinutes <= 60) return 20000 + Math.ceil((overtimeMinutes - 30) / 10) * 15000;
+    // 60 分超は現状「自動パック切替」未実装のため、同一レートで継続課金する。
+    return 20000 + Math.ceil((overtimeMinutes - 30) / 10) * 15000;
   }
 
   async startSession(input: {
@@ -264,25 +278,30 @@ export class SessionService {
       ? Math.ceil((checkedOutAt.getTime() - session.checkedInAt.getTime()) / 60000)
       : 0;
     const rawPrice = session.usageRight?.usageProduct?.priceJpyc ?? '0';
+    const baseDurationMinutes = Math.max(1, session.usageRight?.usageProduct?.durationMinutes ?? 60);
     const basePriceMinor = Number(rawPrice) * 100;
+    const overtimeMinor = this.calculateOvertimeMinor(usedMinutes, baseDurationMinutes);
+    const amenitiesMinor = 0;
+    const damageMinor = 0;
+    const grossMinor = Math.max(0, basePriceMinor + overtimeMinor + amenitiesMinor + damageMinor);
 
     const sessionRef = SettlementContractService.toReferenceId(sessionId);
     const machineRef = session.machineId
       ? SettlementContractService.toReferenceId(session.machineId)
       : '0x0000000000000000000000000000000000000000000000000000000000000000';
-    const grossAmountJpyc = BigInt(rawPrice) * 10n ** 18n;
+    const grossAmountWei = BigInt(grossMinor) * SessionService.WEI_PER_MINOR;
     await this.assertPayerOwnsUsageRight(payerWallet, session.usageRight?.onchainTokenId);
-    await this.assertPayerCanSettle(payerWallet, grossAmountJpyc);
+    await this.assertPayerCanSettle(payerWallet, grossAmountWei);
 
     this.logger.log(
-      `[session.checkout] settle start sessionId=${sessionId} payer=${payerWallet} venueTreasury=${venueTreasury} amountWei=${grossAmountJpyc.toString()}`,
+      `[session.checkout] settle start sessionId=${sessionId} payer=${payerWallet} venueTreasury=${venueTreasury} amountWei=${grossAmountWei.toString()} usedMinutes=${usedMinutes} baseMinor=${basePriceMinor} overtimeMinor=${overtimeMinor}`,
     );
     const txHash = await this.settlement.settleUsage({
       sessionId: sessionRef,
       machineId: machineRef,
       payer: payerWallet,
       venueTreasury,
-      grossAmount: grossAmountJpyc,
+      grossAmount: grossAmountWei,
       platformFeeBps: 250,
       revenueFeeBps: 0,
     });
@@ -314,7 +333,7 @@ export class SessionService {
           entryType: 'SETTLEMENT',
           referenceType: 'SESSION',
           referenceId: sessionId,
-          amountJpyc: grossAmountJpyc.toString(),
+          amountJpyc: grossAmountWei.toString(),
           txHash,
           status: 'CONFIRMED',
           confirmedAt: new Date(),
@@ -323,7 +342,16 @@ export class SessionService {
       return updatedSession;
     });
 
-    return { ...ended, usedMinutes, basePriceMinor };
+    return {
+      ...ended,
+      usedMinutes,
+      basePriceMinor,
+      baseDurationMinutes,
+      overtimeMinor,
+      amenitiesMinor,
+      damageMinor,
+      totalMinor: grossMinor,
+    };
   }
 
   async getSessionById(sessionId: string) {

@@ -591,6 +591,8 @@ export class NodeStayClient {
     checkedOutAt: string | null;
     status: string;
     settlementTxHash: string | null;
+    baseDurationMinutes: number;
+    basePriceMinor: number;
   }> {
     return this.json(`/v1/sessions/${encodeURIComponent(sessionId)}`);
   }
@@ -611,6 +613,8 @@ export class NodeStayClient {
     checkedOutAt: string | null;
     status: string;
     settlementTxHash: string | null;
+    baseDurationMinutes: number;
+    basePriceMinor: number;
   }>> {
     const q = new URLSearchParams();
     if (params?.userId) q.set('userId', params.userId);

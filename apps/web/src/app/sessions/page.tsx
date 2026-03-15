@@ -144,7 +144,7 @@ function ActiveSessionCard({
 function CheckoutComplete({
   result,
 }: {
-  result: { usedMinutes: number; chargesMinor: number };
+  result: { usedMinutes: number; chargesMinor: number; baseMinor: number; overtimeMinor: number };
 }) {
   return (
     <div className="max-w-md mx-auto text-center">
@@ -163,6 +163,14 @@ function CheckoutComplete({
             <span className="font-semibold text-slate-800">
               {Math.floor(result.usedMinutes / 60)}時間{result.usedMinutes % 60}分
             </span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-slate-500">基本料金</span>
+            <span className="font-semibold text-slate-800">{formatJPYC(result.baseMinor)} JPYC</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-slate-500">超過料金</span>
+            <span className="font-semibold text-slate-800">{formatJPYC(result.overtimeMinor)} JPYC</span>
           </div>
           <div className="border-t border-slate-50 pt-3 flex justify-between">
             <span className="font-bold text-slate-800">請求合計</span>

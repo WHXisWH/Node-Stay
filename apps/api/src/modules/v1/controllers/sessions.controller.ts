@@ -30,6 +30,8 @@ export class SessionsController {
   async getSession(@Param('sessionId') sessionId: string) {
     const session = await this.sessions.getSessionById(sessionId);
     if (!session) throw new HttpException({ message: 'セッションが見つかりません' }, HttpStatus.NOT_FOUND);
+    const baseDurationMinutes = session.usageRight?.usageProduct?.durationMinutes ?? 60;
+    const basePriceMinor = Number(session.usageRight?.usageProduct?.priceJpyc ?? '0') * 100;
     return {
       sessionId: session.id,
       usageRightId: session.usageRightId,
@@ -41,6 +43,8 @@ export class SessionsController {
       checkedOutAt: session.checkedOutAt?.toISOString() ?? null,
       status: session.status,
       settlementTxHash: session.settlementTxHash ?? null,
+      baseDurationMinutes,
+      basePriceMinor,
     };
   }
 
@@ -69,6 +73,8 @@ export class SessionsController {
       checkedOutAt: session.checkedOutAt?.toISOString() ?? null,
       status: session.status,
       settlementTxHash: session.settlementTxHash ?? null,
+      baseDurationMinutes: session.usageRight?.usageProduct?.durationMinutes ?? 60,
+      basePriceMinor: Number(session.usageRight?.usageProduct?.priceJpyc ?? '0') * 100,
     }));
   }
 
@@ -125,7 +131,12 @@ export class SessionsController {
 
     const response = {
       usedMinutes: ended.usedMinutes ?? 0,
-      charges: { baseMinor: 0, overtimeMinor: 0, amenitiesMinor: 0, damageMinor: 0 },
+      charges: {
+        baseMinor: ended.basePriceMinor ?? 0,
+        overtimeMinor: ended.overtimeMinor ?? 0,
+        amenitiesMinor: ended.amenitiesMinor ?? 0,
+        damageMinor: ended.damageMinor ?? 0,
+      },
     };
     await this.idempotency.save(key, requestHash, response);
     return response;
