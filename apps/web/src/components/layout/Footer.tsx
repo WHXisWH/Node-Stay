@@ -25,7 +25,8 @@ const FOOTER_LINKS = {
     { href: '/legal/compliance', label: 'コンプライアンス' },
   ],
   事業者様: [
-    { href: '/merchant', label: '店舗管理画面' },
+    { href: '/merchant/login', label: '加盟店ログイン' },
+    { href: '/merchant/dashboard', label: '加盟店ダッシュボード' },
     { href: '/merchant/register', label: '加盟店登録' },
     { href: '/docs/api', label: 'API ドキュメント' },
     { href: '/docs/compute', label: 'コンピュート提供ガイド' },

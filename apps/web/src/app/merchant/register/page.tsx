@@ -27,10 +27,16 @@ export default function MerchantRegisterPage() {
 
         <div className="mt-6 flex flex-wrap gap-3">
           <Link
-            href="/merchant/dashboard"
+            href="/merchant/login"
             className="inline-flex rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
           >
-            管理画面へ進む
+            加盟店ログインへ戻る
+          </Link>
+          <Link
+            href="/merchant/dashboard"
+            className="inline-flex rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            ダッシュボードへ進む（ログイン済み）
           </Link>
           <Link
             href="/help/contact"
