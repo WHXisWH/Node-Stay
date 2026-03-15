@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useLoginFlow } from '../../hooks/useLoginFlow';
 import { useNavState } from '../../hooks/useNavState';
 import { useSyncState } from '../../hooks/useSyncState';
@@ -20,6 +21,32 @@ const NAV_ITEMS = [
   { href: '/compute',    label: 'コンピュート',   protected: false },
   { href: '/revenue',    label: '収益',           protected: true },
 ] as const;
+
+/**
+ * 先頭に濃色ヒーローがあるページでは、未スクロール時に透過ヘッダーを使う。
+ * それ以外のページは常時「白背景 + 濃色文字」にして視認性を担保する。
+ */
+function canUseTransparentHeader(pathname: string): boolean {
+  if (pathname === '/') return true;
+
+  const darkHeroPrefixes = [
+    '/venues',
+    '/marketplace',
+    '/usage-rights',
+    '/sessions',
+    '/compute',
+    '/revenue',
+    '/explore',
+    '/merchant/dashboard',
+    '/merchant/machines',
+    '/merchant/usage-products',
+    '/merchant/settlements',
+    '/merchant/compute',
+    '/merchant/revenue-programs',
+  ];
+
+  return darkHeroPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
 
 async function copyToClipboard(value: string): Promise<void> {
   if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
@@ -40,6 +67,7 @@ async function copyToClipboard(value: string): Promise<void> {
 }
 
 export function Header() {
+  const pathname = usePathname();
   const {
     mobileOpen,
     scrolled,
@@ -86,6 +114,7 @@ export function Header() {
 
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const accountMenuRef = useRef<HTMLDivElement>(null);
+  const headerSolid = scrolled || !canUseTransparentHeader(pathname);
 
   const handleOpenModal = () => {
     clearMessages();
@@ -160,7 +189,7 @@ export function Header() {
     <>
       <header
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-          scrolled ? 'bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-sm' : 'bg-transparent'
+          headerSolid ? 'bg-white/95 backdrop-blur-md border-b border-slate-100 shadow-sm' : 'bg-transparent'
         }`}
       >
         <div className="container-main">
@@ -177,7 +206,7 @@ export function Header() {
                   <line x1="12" y1="12" x2="18.5" y2="17.5" />
                 </svg>
               </div>
-              <span className={`font-bold text-lg tracking-tight ${scrolled ? 'text-slate-900' : 'text-white'}`}>
+              <span className={`font-bold text-lg tracking-tight ${headerSolid ? 'text-slate-900' : 'text-white'}`}>
                 Node Stay
               </span>
             </Link>
@@ -194,10 +223,10 @@ export function Header() {
                     href={item.href}
                     className={`px-3 py-2 rounded-lg text-sm font-medium whitespace-nowrap [word-break:keep-all] leading-none shrink-0 transition-colors flex items-center gap-1 ${
                       active
-                        ? scrolled ? 'bg-brand-50 text-brand-700' : 'bg-white/10 text-white'
+                        ? headerSolid ? 'bg-brand-50 text-brand-700' : 'bg-white/10 text-white'
                         : needsAuth
-                          ? scrolled ? 'text-slate-400 hover:text-slate-600 hover:bg-slate-50' : 'text-white/50 hover:text-white/70 hover:bg-white/5'
-                          : scrolled ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-50' : 'text-white/85 hover:text-white hover:bg-white/10'
+                          ? headerSolid ? 'text-slate-400 hover:text-slate-600 hover:bg-slate-50' : 'text-white/50 hover:text-white/70 hover:bg-white/5'
+                          : headerSolid ? 'text-slate-600 hover:text-slate-900 hover:bg-slate-50' : 'text-white/85 hover:text-white hover:bg-white/10'
                     }`}
                     title={needsAuth ? 'ログインが必要です' : undefined}
                   >
@@ -220,7 +249,7 @@ export function Header() {
               {chainSyncStatus?.isSyncing && (
                 <span
                   className={`hidden 2xl:flex items-center gap-1.5 text-xs px-2 py-1 rounded-md whitespace-nowrap ${
-                    scrolled ? 'text-sky-700 bg-sky-50' : 'text-sky-200 bg-white/10'
+                    headerSolid ? 'text-sky-700 bg-sky-50' : 'text-sky-200 bg-white/10'
                   }`}
                   title="チェーン同期中"
                 >
@@ -231,7 +260,7 @@ export function Header() {
               {chainSyncStatus && !chainSyncStatus.isSyncing && !chainSyncLastError && (
                 <span
                   className={`hidden 2xl:inline-flex text-xs px-2 py-1 rounded-md whitespace-nowrap ${
-                    scrolled ? 'text-slate-500 bg-slate-50' : 'text-white/60 bg-white/5'
+                    headerSolid ? 'text-slate-500 bg-slate-50' : 'text-white/60 bg-white/5'
                   }`}
                   title={`Block #${chainSyncStatus.lastProcessedBlock}`}
                 >
@@ -241,7 +270,7 @@ export function Header() {
               {chainSyncLastError && (
                 <span
                   className={`text-xs px-2 py-1 rounded-md whitespace-nowrap max-w-[120px] truncate ${
-                    scrolled ? 'text-rose-700 bg-rose-50' : 'text-rose-200 bg-white/10'
+                    headerSolid ? 'text-rose-700 bg-rose-50' : 'text-rose-200 bg-white/10'
                   }`}
                   title={chainSyncLastError}
                 >
@@ -364,7 +393,7 @@ export function Header() {
                 {isAuthenticated ? 'アカウント' : 'ログイン'}
               </button>
               <button
-                className={`p-2 rounded-lg ${scrolled ? 'text-slate-600 hover:bg-slate-100' : 'text-white hover:bg-white/10'}`}
+                className={`p-2 rounded-lg ${headerSolid ? 'text-slate-600 hover:bg-slate-100' : 'text-white hover:bg-white/10'}`}
                 onClick={toggleMobile}
                 aria-label="メニューを開く"
               >
