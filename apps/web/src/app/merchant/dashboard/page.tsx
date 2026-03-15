@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { useMerchantDashboard } from '../../../hooks';
 import type { MachineUtilization } from '../../../hooks/useMerchantDashboard';
 import { createNodeStayClient } from '../../../services/nodestay';
+import { useUserState } from '../../../hooks/useUserState';
 
 // ===== 金額フォーマット =====
 function formatJPYC(minor: number): string {
@@ -118,6 +119,7 @@ function KpiCard({
 // ===== ページコンポーネント =====
 export default function MerchantDashboardPage() {
   const { venueId, venueName, revenue, machines, sessions, selectedPeriod, setSelectedPeriod } = useMerchantDashboard();
+  const { isAuthenticated } = useUserState();
   const [treasuryWalletInput, setTreasuryWalletInput] = useState('');
   const [treasuryLoading, setTreasuryLoading] = useState(false);
   const [treasurySaving, setTreasurySaving] = useState(false);
@@ -176,6 +178,11 @@ export default function MerchantDashboardPage() {
     }
   };
 
+  const handleOpenLogin = () => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent('nodestay:open-login-modal'));
+  };
+
   return (
     <>
       {/* ページヘッダー */}
@@ -213,7 +220,20 @@ export default function MerchantDashboardPage() {
 
       {/* メインコンテンツ */}
       <div className="container-main py-8 flex flex-col gap-8">
-        {!venueId && (
+        {!isAuthenticated && (
+          <div className="card p-4 border border-amber-200 bg-amber-50 text-amber-800">
+            <p className="text-sm font-semibold">加盟店ダッシュボードの利用にはログインが必要です。</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button onClick={handleOpenLogin} className="btn-primary py-2 px-4 text-sm">
+                ここからログイン
+              </button>
+              <Link href="/?redirect=/merchant/dashboard" className="btn-secondary py-2 px-4 text-sm">
+                ホームへ戻ってログイン
+              </Link>
+            </div>
+          </div>
+        )}
+        {isAuthenticated && !venueId && (
           <div className="card p-4 border border-amber-200 bg-amber-50 text-amber-700 text-sm font-semibold">
             加盟店店舗が未設定です。先に店舗を作成してください。
           </div>

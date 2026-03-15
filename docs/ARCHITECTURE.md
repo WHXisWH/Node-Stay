@@ -1,6 +1,6 @@
 # NodeStay アーキテクチャ詳細
 
-> 最終更新：2026-03-13
+> 最終更新：2026-03-15
 
 ---
 
@@ -36,7 +36,7 @@ graph TB
 
     subgraph AA["AA インフラ層"]
         ZeroDevBundler["ZeroDev Bundler<br/>rpc.zerodev.app"]
-        PimlicoPaymaster["Pimlico Paymaster<br/>api.pimlico.io"]
+        ZeroDevPaymaster["ZeroDev Paymaster<br/>rpc.zerodev.app"]
     end
 
     subgraph Web["apps/web — Next.js 14 (App Router)"]
@@ -143,7 +143,7 @@ graph TB
     end
 
     subgraph AALayer["AA インフラ (src/services/aa/)"]
-        KernelClient["kernelClient.ts<br/>ZeroDev Kernel v0.3.1<br/>+ ZeroDev Bundler<br/>+ Pimlico Paymaster"]
+        KernelClient["kernelClient.ts<br/>ZeroDev Kernel v0.3.1<br/>+ ZeroDev Bundler<br/>+ ZeroDev Paymaster"]
         EncodeCalls["encodeMarketplaceCalls.ts<br/>callData エンコーダー"]
     end
 
@@ -310,7 +310,7 @@ sequenceDiagram
     participant TxMode as useTxMode（AAモード）
     participant Kernel as ZeroDev Kernel
     participant Bundler as ZeroDev Bundler
-    participant Paymaster as Pimlico Paymaster
+    participant Paymaster as ZeroDev Paymaster
     participant API as NestJS API
     participant Chain as Polygon Amoy
 

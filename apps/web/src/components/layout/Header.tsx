@@ -87,6 +87,16 @@ export function Header() {
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const accountMenuRef = useRef<HTMLDivElement>(null);
 
+  const handleOpenModal = () => {
+    clearMessages();
+    openLoginModal();
+  };
+
+  const handleCloseModal = () => {
+    clearMessages();
+    closeLoginModal();
+  };
+
   // コピー状態を 1.8 秒後にリセット
   useEffect(() => {
     if (copyStatus === 'idle') return;
@@ -106,6 +116,15 @@ export function Header() {
     return () => document.removeEventListener('mousedown', handleOutside);
   }, [accountMenuOpen, closeAccountMenu]);
 
+  // ページ側からの「ログインモーダルを開く」要求を受け付ける
+  useEffect(() => {
+    const handleOpenLoginRequest = () => {
+      handleOpenModal();
+    };
+    window.addEventListener('nodestay:open-login-modal', handleOpenLoginRequest);
+    return () => window.removeEventListener('nodestay:open-login-modal', handleOpenLoginRequest);
+  }, [handleOpenModal]);
+
   const handleCopyAddress = async (addr: string | null | undefined) => {
     if (!addr) return;
     try {
@@ -114,16 +133,6 @@ export function Header() {
     } catch {
       setCopyStatus('failed');
     }
-  };
-
-  const handleOpenModal = () => {
-    clearMessages();
-    openLoginModal();
-  };
-
-  const handleCloseModal = () => {
-    clearMessages();
-    closeLoginModal();
   };
 
   const copyLabel = copyStatus === 'copied' ? 'コピー済み' : copyStatus === 'failed' ? '失敗' : 'コピー';
