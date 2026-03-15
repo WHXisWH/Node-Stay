@@ -234,8 +234,15 @@ export default function MerchantDashboardPage() {
           </div>
         )}
         {isAuthenticated && !venueId && (
-          <div className="card p-4 border border-amber-200 bg-amber-50 text-amber-700 text-sm font-semibold">
-            加盟店店舗が未設定です。先に店舗を作成してください。
+          <div className="card p-4 border border-amber-200 bg-amber-50">
+            <p className="text-sm font-semibold text-amber-700">
+              加盟店店舗が未設定です。先に店舗を作成してください。
+            </p>
+            <div className="mt-3">
+              <Link href="/merchant/register" className="btn-primary py-2 px-4 text-sm">
+                店舗を作成する
+              </Link>
+            </div>
           </div>
         )}
 
