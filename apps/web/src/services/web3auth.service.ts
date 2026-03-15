@@ -85,6 +85,18 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function withTimeout<T>(task: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = globalThis.setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  return Promise.race([task, timeoutPromise]).finally(() => {
+    if (timeoutId !== null) {
+      globalThis.clearTimeout(timeoutId);
+    }
+  });
+}
+
 function isRecoverableSessionError(error: unknown): boolean {
   const message = errorMessage(error).toLowerCase();
   return (
@@ -145,7 +157,11 @@ class Web3AuthServiceClass {
     let provider: Web3AuthProvider | null = null;
 
     try {
-      provider = await (await getWeb3Auth()).connect();
+      provider = await withTimeout(
+        (await getWeb3Auth()).connect(),
+        90000,
+        'ソーシャルログインがタイムアウトしました。ブラウザのポップアップ設定を確認して再試行してください。',
+      );
     } catch (error) {
       if (!isRecoverableSessionError(error)) {
         throw error;
@@ -153,7 +169,11 @@ class Web3AuthServiceClass {
 
       // セッション破損時はインスタンスを作り直して 1 回だけ再試行する。
       await resetWeb3Auth();
-      provider = await (await getWeb3Auth()).connect();
+      provider = await withTimeout(
+        (await getWeb3Auth()).connect(),
+        90000,
+        'ソーシャルログインがタイムアウトしました。ブラウザのポップアップ設定を確認して再試行してください。',
+      );
     }
 
     if (!provider) {

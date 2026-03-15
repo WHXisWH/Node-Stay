@@ -49,7 +49,7 @@ export function useSessionPage(): UseSessionPageReturn {
   // User store からアクティブセッション ID を取得
   const activeSessionId = useUserStore((s) => s.activeSessionId);
   const setActiveSessionId = useUserStore((s) => s.setActiveSessionId);
-  const { onchainWalletAddress } = useUserState();
+  const { onchainWalletAddress, loginMethod, aaWalletAddress } = useUserState();
   const { approveJPYC } = useTxMode();
 
   const [session, setSession] = useState<ActiveSession | null>(null);
@@ -59,6 +59,38 @@ export function useSessionPage(): UseSessionPageReturn {
   const [checkoutResult, setCheckoutResult] = useState<CheckoutResult | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const settlementAddress = CONTRACT_ADDRESSES.settlement;
+  const checkoutPayerWallet = loginMethod === 'social'
+    ? (aaWalletAddress ?? null)
+    : (onchainWalletAddress ?? null);
+
+  const mapSessionToActive = useCallback((data: {
+    sessionId: string;
+    usageRightId: string;
+    planName: string;
+    venueName: string;
+    machineId: string | null;
+    checkedInAt: string;
+    status: string;
+  }): ActiveSession => {
+    const status: SessionStatus =
+      data.status === 'IN_USE'
+        ? 'IN_USE'
+        : data.status === 'COMPLETED'
+          ? 'ENDED'
+          : 'IN_USE';
+    return {
+      sessionId: data.sessionId,
+      usageRightId: data.usageRightId,
+      planName: data.planName,
+      venueName: data.venueName,
+      seatId: data.machineId ?? '-',
+      seatType: 'BOOTH',
+      checkInAt: data.checkedInAt,
+      baseDurationMinutes: 180,
+      basePriceMinor: 0,
+      status,
+    };
+  }, []);
 
   const completeCheckout = useCallback((payload: unknown) => {
     const r = payload as { usedMinutes?: number; charges?: { baseMinor?: number }; chargesMinor?: number };
@@ -77,7 +109,7 @@ export function useSessionPage(): UseSessionPageReturn {
   ): Promise<boolean> => {
     if (!(error instanceof NodeStayApiError)) return false;
     if (error.status !== 422) return false;
-    if (!onchainWalletAddress || !isAddress(onchainWalletAddress)) return false;
+    if (!checkoutPayerWallet || !isAddress(checkoutPayerWallet)) return false;
     if (!error.bodyJson || typeof error.bodyJson !== 'object') return false;
 
     const payload = error.bodyJson as Record<string, unknown>;
@@ -98,50 +130,37 @@ export function useSessionPage(): UseSessionPageReturn {
     await approveJPYC(spender as `0x${string}`, Number(approveJpyc));
     const client = createNodeStayClient();
     const retryKey = `checkout-retry-${sessionId}-${Date.now()}`;
-    const retryResult = await client.checkoutSession({ sessionId, payerWallet: onchainWalletAddress }, retryKey);
+    const retryResult = await client.checkoutSession({ sessionId, payerWallet: checkoutPayerWallet }, retryKey);
     completeCheckout(retryResult);
     return true;
-  }, [approveJPYC, completeCheckout, settlementAddress, onchainWalletAddress]);
+  }, [approveJPYC, checkoutPayerWallet, completeCheckout, settlementAddress]);
 
   /** API からセッション情報を取得し ActiveSession 型にマッピング */
   const loadSession = useCallback(async () => {
-    if (!activeSessionId) {
-      setSession(null);
-      return;
-    }
     setLoading(true);
     try {
       const client = createNodeStayClient();
+      if (!activeSessionId) {
+        const inUseSessions = await client.listSessions({ status: 'IN_USE', limit: 1 });
+        const current = inUseSessions[0];
+        if (!current) {
+          setSession(null);
+          return;
+        }
+        setActiveSessionId(current.sessionId);
+        setSession(mapSessionToActive(current));
+        return;
+      }
+
       const data = await client.getSession(activeSessionId);
-      // API レスポンスを ActiveSession 型にマッピング
-      const status: SessionStatus =
-        data.status === 'IN_USE'
-          ? 'IN_USE'
-          : data.status === 'COMPLETED'
-          ? 'ENDED'
-          : 'IN_USE';
-      setSession({
-        sessionId: data.sessionId,
-        usageRightId: data.usageRightId,
-        planName: data.planName,
-        venueName: data.venueName,
-        // machineId が null の場合は '-' にフォールバック
-        seatId: data.machineId ?? '-',
-        // API に seatType フィールドがないため固定値を使用
-        seatType: 'BOOTH',
-        checkInAt: data.checkedInAt,
-        // usageProduct から取得するが API レスポンスに含まれないため簡略化
-        baseDurationMinutes: 180,
-        basePriceMinor: 0,
-        status,
-      });
+      setSession(mapSessionToActive(data));
     } catch {
       // エラー時はセッションを null にリセット
       setSession(null);
     } finally {
       setLoading(false);
     }
-  }, [activeSessionId]);
+  }, [activeSessionId, mapSessionToActive, setActiveSessionId]);
 
   // activeSessionId が変わるたびにセッション情報を再取得
   useEffect(() => {
@@ -163,12 +182,16 @@ export function useSessionPage(): UseSessionPageReturn {
   /** チェックアウト処理：API を呼び出し、成功後にアクティブセッション ID をクリア */
   const handleCheckout = async () => {
     if (!session) return;
+    if (loginMethod === 'social' && !aaWalletAddress) {
+      alert('AAウォレットが未初期化です。アカウントメニューから AA ウォレットを初期化してから再試行してください。');
+      return;
+    }
     setChecking(true);
     try {
       const client = createNodeStayClient();
       const key = `checkout-${session.sessionId}-${Date.now()}`;
       const result = await client.checkoutSession(
-        { sessionId: session.sessionId, payerWallet: onchainWalletAddress ?? undefined },
+        { sessionId: session.sessionId, payerWallet: checkoutPayerWallet ?? undefined },
         key,
       );
       completeCheckout(result);

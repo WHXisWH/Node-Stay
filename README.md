@@ -3,7 +3,25 @@
 NodeStay は、利用権マーケットとコンピュート市場を組み合わせた Web3 アプリケーションです。
 フロントエンドは Next.js、バックエンドは NestJS、チェーンは Polygon Amoy（testnet）を使用しています。
 
-## 現在の実装状況（2026-03）
+> Built for JBA Blockchain Hackathon 2026
+
+## 目次
+
+1. [現在の実装状況](#現在の実装状況)
+2. [技術アーキテクチャ（概要）](#技術アーキテクチャ概要)
+3. [業務フロー（概要）](#業務フロー概要)
+4. [技術スタック](#技術スタック)
+5. [リポジトリ構成](#リポジトリ構成)
+6. [セットアップ](#セットアップ)
+7. [開発コマンド](#開発コマンド)
+8. [デプロイ](#デプロイ)
+9. [AA / Paymaster メモ](#aa--paymaster-メモ)
+10. [参考ドキュメント](#参考ドキュメント)
+11. [ライセンス](#ライセンス)
+
+## 現在の実装状況
+
+> 更新時点: 2026-03
 
 - 利用権の購入・出品・二次購入・取消の主線が動作
 - Web3Auth（ソーシャルログイン）からの AA 購入フローを全購入経路で統一実装
@@ -261,18 +279,18 @@ npm run prisma:studio
 
 ## 参考ドキュメント
 
-- `docs/ARCHITECTURE.md`
-- `docs/README.md`
-- `docs/NodeStay_01_Product_Definition_and_Requirements.md`
-- `docs/NodeStay_02_Protocol_Architecture_and_System_Spec.md`
-- `docs/NodeStay_03_Economic_Model_and_Market_Design.md`
-- `docs/NodeStay_04_Tokenization_Standard_Polygon_Edition.md`
-- `docs/NodeStay_05_Pitch_Narrative_MVP_GTM_and_QA.md`
-- `docs/NodeStay_Database_Schema_and_PRD_v2.md`
-- `docs/NodeStay_PRD_v3_FullSpec.md`
-- `docs/NodeStay_Solidity_Interface_Draft.md`
-- `docs/NodeStay_Whitepaper_Outline.md`
+- [docs/README.md](docs/README.md)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- [docs/NodeStay_01_Product_Definition_and_Requirements.md](docs/NodeStay_01_Product_Definition_and_Requirements.md)
+- [docs/NodeStay_02_Protocol_Architecture_and_System_Spec.md](docs/NodeStay_02_Protocol_Architecture_and_System_Spec.md)
+- [docs/NodeStay_03_Economic_Model_and_Market_Design.md](docs/NodeStay_03_Economic_Model_and_Market_Design.md)
+- [docs/NodeStay_04_Tokenization_Standard_Polygon_Edition.md](docs/NodeStay_04_Tokenization_Standard_Polygon_Edition.md)
+- [docs/NodeStay_05_Pitch_Narrative_MVP_GTM_and_QA.md](docs/NodeStay_05_Pitch_Narrative_MVP_GTM_and_QA.md)
+- [docs/NodeStay_Database_Schema_and_PRD_v2.md](docs/NodeStay_Database_Schema_and_PRD_v2.md)
+- [docs/NodeStay_PRD_v3_FullSpec.md](docs/NodeStay_PRD_v3_FullSpec.md)
+- [docs/NodeStay_Solidity_Interface_Draft.md](docs/NodeStay_Solidity_Interface_Draft.md)
+- [docs/NodeStay_Whitepaper_Outline.md](docs/NodeStay_Whitepaper_Outline.md)
 
 ## ライセンス
 
-MIT
+本プロジェクトの権利は作成者個人に帰属します（All Rights Reserved）。

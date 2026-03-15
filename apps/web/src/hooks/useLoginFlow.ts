@@ -60,6 +60,7 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
 
   const setSocialWalletAddress = useUserStore((s) => s.setSocialWalletAddress);
   const setAaWalletAddress = useUserStore((s) => s.setAaWalletAddress);
+  const socialWalletAddress = useUserStore((s) => s.socialWalletAddress);
   const aaWalletAddress = useUserStore((s) => s.aaWalletAddress);
   const setLoginMethod          = useUserStore((s) => s.setLoginMethod);
   const router = useRouter();
@@ -138,6 +139,53 @@ export function useLoginFlow(params: UseLoginFlowParams): UseLoginFlowReturn {
     loginMethod,
     resolveAaWalletAddressWithRetry,
     setSocialWalletAddress,
+  ]);
+
+  /**
+   * 旧セッション復元: JWT はあるが loginMethod が欠落している場合の救済。
+   * social 情報が残っている、または Web3Auth セッションが復元できる場合は social に寄せる。
+   */
+  useEffect(() => {
+    if (!isAuthenticated || loginMethod !== null) return;
+
+    let active = true;
+    void (async () => {
+      if (socialWalletAddress) {
+        setLoginMethod('social');
+        if (!aaWalletAddress) {
+          await resolveAaWalletAddressWithRetry({ attempts: 4, baseIntervalMs: 900 }).catch(() => null);
+        }
+        return;
+      }
+
+      try {
+        const restored = await Web3AuthService.restoreSocialSession();
+        if (!active || !restored?.address) return;
+        setSocialWalletAddress(restored.address);
+        setLoginMethod('social');
+        if (!aaWalletAddress) {
+          await resolveAaWalletAddressWithRetry({ attempts: 4, baseIntervalMs: 900 }).catch(() => null);
+        }
+        return;
+      } catch {
+        // 復元不可の場合は何もしない（ウォレット接続済みなら別経路で loginMethod が設定される）
+      }
+
+      if (active && wagmiAddress) {
+        setLoginMethod('wallet');
+      }
+    })();
+
+    return () => { active = false; };
+  }, [
+    aaWalletAddress,
+    isAuthenticated,
+    loginMethod,
+    resolveAaWalletAddressWithRetry,
+    setLoginMethod,
+    setSocialWalletAddress,
+    socialWalletAddress,
+    wagmiAddress,
   ]);
 
   /** 認証完了時: モーダルを閉じてリダイレクト処理 */

@@ -358,7 +358,7 @@ export function Header() {
             {/* モバイル右側エリア */}
             <div className="lg:hidden ml-auto flex items-center gap-2">
               <button
-                onClick={isAuthenticated ? toggleAccountMenu : handleOpenModal}
+                onClick={isAuthenticated ? toggleMobile : handleOpenModal}
                 className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-600 text-white hover:bg-brand-700"
               >
                 {isAuthenticated ? 'アカウント' : 'ログイン'}
@@ -391,22 +391,62 @@ export function Header() {
             <div className="container-main py-4 space-y-3">
               {/* ウォレット情報カード */}
               <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-600">{addressTypeLabel}</span>
-                  <span className="text-xs font-semibold text-slate-900">{walletLabel}</span>
-                </div>
-                {displayAddress && (
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[11px] text-slate-600 truncate font-mono">{displayAddress}</p>
+                {loginMethod === 'social' ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-600">AAウォレット（取引用）</span>
+                      <span className="text-xs font-semibold text-slate-900">{walletLabel}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[11px] text-slate-600 truncate font-mono">{aaWalletAddress ?? '未初期化'}</p>
+                      <button
+                        onClick={() => void handleCopyAddress(aaWalletAddress)}
+                        disabled={!aaWalletAddress}
+                        className="text-[11px] px-2 py-1 rounded bg-white border border-slate-200 text-slate-700 disabled:opacity-50"
+                      >
+                        {copyLabel}
+                      </button>
+                    </div>
+                    <div className="text-[11px] text-slate-500">Owner EOA（認証用）</div>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[11px] text-slate-600 truncate font-mono">{socialWalletAddress ?? walletAddress ?? '—'}</p>
+                      <button
+                        onClick={() => void handleCopyAddress(socialWalletAddress ?? walletAddress)}
+                        disabled={!(socialWalletAddress ?? walletAddress)}
+                        className="text-[11px] px-2 py-1 rounded bg-white border border-slate-200 text-slate-700 disabled:opacity-50"
+                      >
+                        {copyLabel}
+                      </button>
+                    </div>
                     <button
-                      onClick={() => void handleCopyAddress(displayAddress)}
-                      className="text-[11px] px-2 py-1 rounded bg-white border border-slate-200 text-slate-700"
+                      onClick={() => void ensureAaWallet()}
+                      disabled={aaResolving}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
                     >
-                      {copyLabel}
+                      {aaResolving ? 'AAウォレットを初期化中...' : (aaWalletAddress ? 'AAウォレットを再取得' : 'AAウォレットを初期化')}
                     </button>
+                    <p className="text-[11px] text-slate-500">認証方式: {authMethodLabel}</p>
                   </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-600">{addressTypeLabel}</span>
+                      <span className="text-xs font-semibold text-slate-900">{walletLabel}</span>
+                    </div>
+                    {displayAddress && (
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[11px] text-slate-600 truncate font-mono">{displayAddress}</p>
+                        <button
+                          onClick={() => void handleCopyAddress(displayAddress)}
+                          className="text-[11px] px-2 py-1 rounded bg-white border border-slate-200 text-slate-700"
+                        >
+                          {copyLabel}
+                        </button>
+                      </div>
+                    )}
+                    {displayAddress && <p className="text-[11px] text-slate-500">認証方式: {authMethodLabel}</p>}
+                  </>
                 )}
-                {displayAddress && <p className="text-[11px] text-slate-500">認証方式: {authMethodLabel}</p>}
               </div>
 
               {isAuthenticated && balance !== null && (
@@ -425,7 +465,14 @@ export function Header() {
                 </button>
               )}
 
-              {authError && <p className="text-xs text-red-500 px-1">{authError}</p>}
+              {(socialHint || aaHint || authError || connectErrorMessage) && (
+                <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 space-y-1">
+                  {socialHint && <p className="text-xs text-slate-600">{socialHint}</p>}
+                  {aaHint && <p className="text-xs text-slate-600">{aaHint}</p>}
+                  {authError && <p className="text-xs text-red-500">{authError}</p>}
+                  {connectErrorMessage && <p className="text-xs text-red-500">{connectErrorMessage}</p>}
+                </div>
+              )}
 
               {/* ナビゲーションリンク */}
               <div className="pt-2 border-t border-slate-100 flex flex-col gap-1">
